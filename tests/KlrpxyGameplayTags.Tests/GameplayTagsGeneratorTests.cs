@@ -45,6 +45,297 @@ namespace Consumer
             AssertCompiles(outputCompilation);
         }
 
+        // 验证 Tag Table 会忽略空行和以 # 开头的整行注释。
+        [Fact]
+        public void TagTableIgnoresBlankLinesAndFullLineComments()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static Tag Read() => ProjectTags.Unit.Enemy;
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "\n# Unit tags\n   # Enemy tags\nUnit.Enemy\n"));
+
+            AssertCompiles(outputCompilation);
+        }
+
+        // 验证非法 Tag 路径段通过 KTAG003 精确定位到 AdditionalFile 行。
+        [Fact]
+        public void InvalidPathSegmentReportsExactAdditionalFileLine()
+        {
+            const string tablePath = "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile";
+            GenerationResult result = RunGeneratorWithDiagnostics(
+                @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+}",
+                new InMemoryAdditionalText(tablePath, "Unit\nUnit.invalid-name\n"));
+
+            Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("KTAG003", diagnostic.Id);
+            Assert.Equal(
+                "Tag path 'Unit.invalid-name' contains invalid segment 'invalid-name'; each segment must match [A-Z][A-Za-z0-9]*.",
+                diagnostic.GetMessage());
+            Assert.Equal(tablePath, diagnostic.Location.GetLineSpan().Path);
+            Assert.Equal(new LinePosition(1, 0), diagnostic.Location.GetLineSpan().StartLinePosition);
+            Assert.Equal(new LinePosition(1, 17), diagnostic.Location.GetLineSpan().EndLinePosition);
+        }
+
+        // 验证重复显式声明通过 KTAG004 精确定位到第二次声明行。
+        [Fact]
+        public void DuplicateExplicitDeclarationReportsExactAdditionalFileLine()
+        {
+            const string tablePath = "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile";
+            GenerationResult result = RunGeneratorWithDiagnostics(
+                @"
+using Klrpxy.Gameplay.Tags;
+
+[GenerateGameplayTags]
+public static partial class ProjectTags
+{
+}",
+                new InMemoryAdditionalText(tablePath, "Unit.Enemy\nUnit.Enemy\n"));
+
+            Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("KTAG004", diagnostic.Id);
+            Assert.Equal("Tag path 'Unit.Enemy' is explicitly declared more than once.", diagnostic.GetMessage());
+            Assert.Equal(tablePath, diagnostic.Location.GetLineSpan().Path);
+            Assert.Equal(new LinePosition(1, 0), diagnostic.Location.GetLineSpan().StartLinePosition);
+            Assert.Equal(new LinePosition(1, 10), diagnostic.Location.GetLineSpan().EndLinePosition);
+        }
+
+        // 验证显式声明祖先后再声明后代不会被视为重复声明。
+        [Fact]
+        public void ExplicitAncestorAndDescendantAreNotDuplicates()
+        {
+            Compilation outputCompilation = RunGenerator(
+                @"
+using Klrpxy.Gameplay.Tags;
+
+[GenerateGameplayTags]
+public static partial class ProjectTags
+{
+}
+
+public static class ConsumerContract
+{
+    public static Tag Read() => ProjectTags.Unit.Enemy;
+}",
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit\nUnit.Enemy\n"));
+
+            AssertCompiles(outputCompilation);
+        }
+
+        // 验证所有保留成员名都通过 KTAG005 精确定位到各自的 AdditionalFile 行。
+        [Fact]
+        public void ReservedSegmentsReportExactAdditionalFileLines()
+        {
+            const string tablePath = "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile";
+            GenerationResult result = RunGeneratorWithDiagnostics(
+                @"
+using Klrpxy.Gameplay.Tags;
+
+[GenerateGameplayTags]
+public static partial class ProjectTags
+{
+}",
+                new InMemoryAdditionalText(
+                    tablePath,
+                    "Unit.Equals\nUnit.GetHashCode\nUnit.GetType\nUnit.ToString\nUnit.GetPath\nUnit.GetParent\n"));
+
+            string[] reservedNames =
+            {
+                "Equals",
+                "GetHashCode",
+                "GetType",
+                "ToString",
+                "GetPath",
+                "GetParent"
+            };
+            Assert.Equal(reservedNames.Length, result.Diagnostics.Length);
+            for (int index = 0; index < reservedNames.Length; index++)
+            {
+                Diagnostic diagnostic = result.Diagnostics[index];
+                Assert.Equal("KTAG005", diagnostic.Id);
+                Assert.Equal(
+                    $"Tag path 'Unit.{reservedNames[index]}' uses reserved segment '{reservedNames[index]}'.",
+                    diagnostic.GetMessage());
+                Assert.Equal(tablePath, diagnostic.Location.GetLineSpan().Path);
+                Assert.Equal(index, diagnostic.Location.GetLineSpan().StartLinePosition.Line);
+                Assert.Equal(0, diagnostic.Location.GetLineSpan().StartLinePosition.Character);
+            }
+        }
+
+        // 验证没有生成标记的编译不会生成 Tag 层级，也不会校验 Tag Table。
+        [Fact]
+        public void CompilationWithoutMarkerGeneratesNoHierarchyOrDiagnostics()
+        {
+            GenerationResult result = RunGeneratorWithDiagnostics(
+                "namespace Consumer { public static class Unmarked { } }",
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "invalid\n"));
+
+            Assert.Empty(result.Diagnostics);
+            Assert.Null(result.Compilation.GetTypeByMetadataName("Consumer.Tag"));
+        }
+
+        // 验证非法生成标记目标通过 KTAG001 精确定位到标记属性。
+        [Fact]
+        public void InvalidMarkerTargetReportsMarkerLocation()
+        {
+            GenerationResult result = RunGeneratorWithDiagnostics(
+                "using Klrpxy.Gameplay.Tags;\n\nnamespace Consumer\n{\n    [GenerateGameplayTags]\n    public class ProjectTags\n    {\n    }\n}",
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit\n"));
+
+            Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("KTAG001", diagnostic.Id);
+            Assert.Equal(
+                "GenerateGameplayTags can only be applied to a non-generic, top-level static partial class.",
+                diagnostic.GetMessage());
+            Assert.Equal("Consumer.cs", diagnostic.Location.GetLineSpan().Path);
+            Assert.Equal(new LinePosition(4, 5), diagnostic.Location.GetLineSpan().StartLinePosition);
+            Assert.Equal(new LinePosition(4, 25), diagnostic.Location.GetLineSpan().EndLinePosition);
+        }
+
+        // 验证嵌套或泛型根通过 KTAG001 拒绝，而不会扩展错误的顶层类型。
+        [Fact]
+        public void NestedAndGenericMarkerTargetsReportInvalidTarget()
+        {
+            GenerationResult nestedResult = RunGeneratorWithDiagnostics(
+                "using Klrpxy.Gameplay.Tags;\n\npublic static class Container\n{\n    [GenerateGameplayTags]\n    public static partial class ProjectTags { }\n}\n",
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit\n"));
+            GenerationResult genericResult = RunGeneratorWithDiagnostics(
+                "using Klrpxy.Gameplay.Tags;\n\n[GenerateGameplayTags]\npublic static partial class ProjectTags<T> { }\n",
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit\n"));
+
+            Assert.Equal("KTAG001", Assert.Single(nestedResult.Diagnostics).Id);
+            Assert.Equal("KTAG001", Assert.Single(genericResult.Diagnostics).Id);
+        }
+
+        // 验证多个合法生成根通过 KTAG002 精确定位到第二个标记属性。
+        [Fact]
+        public void MultipleMarkerRootsReportSecondMarkerLocation()
+        {
+            GenerationResult result = RunGeneratorWithDiagnostics(
+                "using Klrpxy.Gameplay.Tags;\n\n[GenerateGameplayTags]\npublic static partial class First { }\n\n[GenerateGameplayTags]\npublic static partial class Second { }\n",
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit\n"));
+
+            Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("KTAG002", diagnostic.Id);
+            Assert.Equal(
+                "Exactly one static partial class can be marked with GenerateGameplayTags; found 2.",
+                diagnostic.GetMessage());
+            Assert.Equal("Consumer.cs", diagnostic.Location.GetLineSpan().Path);
+            Assert.Equal(new LinePosition(5, 1), diagnostic.Location.GetLineSpan().StartLinePosition);
+            Assert.Equal(new LinePosition(5, 21), diagnostic.Location.GetLineSpan().EndLinePosition);
+        }
+
+        // 验证缺失 Tag Table 通过 KTAG006 精确定位到生成标记。
+        [Fact]
+        public void MissingTagTableReportsMarkerLocation()
+        {
+            GenerationResult result = RunGeneratorWithDiagnostics(
+                "using Klrpxy.Gameplay.Tags;\n\n[GenerateGameplayTags]\npublic static partial class ProjectTags { }\n");
+
+            Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("KTAG006", diagnostic.Id);
+            Assert.Equal(
+                "A marked compilation requires GameplayTags.KlrpxyGameplayTags.additionalfile, but no matching Tag Table was provided.",
+                diagnostic.GetMessage());
+            Assert.Equal("Consumer.cs", diagnostic.Location.GetLineSpan().Path);
+            Assert.Equal(new LinePosition(2, 1), diagnostic.Location.GetLineSpan().StartLinePosition);
+            Assert.Equal(new LinePosition(2, 21), diagnostic.Location.GetLineSpan().EndLinePosition);
+        }
+
+        // 验证歧义 Tag Table 通过 KTAG007 精确定位到第二个冲突文件。
+        [Fact]
+        public void AmbiguousTagTablesReportSecondFileLocation()
+        {
+            const string secondTablePath =
+                "Packages/Feature/GameplayTags.KlrpxyGameplayTags.additionalfile";
+            GenerationResult result = RunGeneratorWithDiagnostics(
+                "using Klrpxy.Gameplay.Tags;\n\n[GenerateGameplayTags]\npublic static partial class ProjectTags { }\n",
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit\n"),
+                new InMemoryAdditionalText(secondTablePath, "Ability\n"));
+
+            Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("KTAG007", diagnostic.Id);
+            Assert.Equal(
+                "A marked compilation requires exactly one GameplayTags.KlrpxyGameplayTags.additionalfile, but 2 matching Tag Tables were provided.",
+                diagnostic.GetMessage());
+            Assert.Equal(secondTablePath, diagnostic.Location.GetLineSpan().Path);
+            Assert.Equal(new LinePosition(0, 0), diagnostic.Location.GetLineSpan().StartLinePosition);
+            Assert.Equal(new LinePosition(0, 7), diagnostic.Location.GetLineSpan().EndLinePosition);
+        }
+
+        // 验证原型确立的 KTAG003、KTAG004、KTAG005 含义和精确行序列保持不变。
+        [Fact]
+        public void InvalidTablePreservesPrototypeDiagnosticIdsAndLines()
+        {
+            GenerationResult result = RunGeneratorWithDiagnostics(
+                "using Klrpxy.Gameplay.Tags;\n\n[GenerateGameplayTags]\npublic static partial class ProjectTags { }\n",
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "# Invalid examples\nunit\nUnit.enemy\nUnit.Enemy\nUnit.Enemy\nUnit.GetPath\nUnit.Enemy-Boss\n"));
+
+            Assert.Equal(
+                new[] { "KTAG003", "KTAG003", "KTAG004", "KTAG005", "KTAG003" },
+                result.Diagnostics.Select(diagnostic => diagnostic.Id));
+            Assert.Equal(
+                new[] { 1, 2, 4, 5, 6 },
+                result.Diagnostics.Select(diagnostic =>
+                    diagnostic.Location.GetLineSpan().StartLinePosition.Line));
+        }
+
+        // 验证行内 # 仍属于路径内容，并通过 KTAG003 报告而不是被当作注释。
+        [Fact]
+        public void InlineCommentSyntaxIsRejectedAsInvalidPath()
+        {
+            GenerationResult result = RunGeneratorWithDiagnostics(
+                "using Klrpxy.Gameplay.Tags;\n\n[GenerateGameplayTags]\npublic static partial class ProjectTags { }\n",
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy # comment\n"));
+
+            Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("KTAG003", diagnostic.Id);
+            Assert.Equal(0, diagnostic.Location.GetLineSpan().StartLinePosition.Line);
+        }
+
         // 验证生成的 Tag 与节点类型不会向消费者暴露可用的构造入口。
         [Fact]
         public void GeneratedTagTypesExposeNoConstructionPath()
@@ -270,9 +561,22 @@ namespace Consumer
 
         private static Compilation RunGenerator(string source, params AdditionalText[] additionalTexts)
         {
+            return RunGeneratorWithDiagnostics(source, additionalTexts).Compilation;
+        }
+
+        private static GenerationResult RunGeneratorWithDiagnostics(
+            string source,
+            params AdditionalText[] additionalTexts)
+        {
             CSharpCompilation compilation = CSharpCompilation.Create(
                 "ConsumerAssembly",
-                new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp8)) },
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(
+                        source,
+                        new CSharpParseOptions(LanguageVersion.CSharp8),
+                        "Consumer.cs")
+                },
                 GetFrameworkReferences(),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
@@ -281,8 +585,11 @@ namespace Consumer
                 additionalTexts: ImmutableArray.Create(additionalTexts),
                 parseOptions: new CSharpParseOptions(LanguageVersion.CSharp8));
 
-            driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation outputCompilation, out _);
-            return outputCompilation;
+            driver.RunGeneratorsAndUpdateCompilation(
+                compilation,
+                out Compilation outputCompilation,
+                out ImmutableArray<Diagnostic> diagnostics);
+            return new GenerationResult(outputCompilation, diagnostics);
         }
 
         private static void AssertCompiles(Compilation compilation)
@@ -318,6 +625,19 @@ namespace Consumer
             {
                 return text;
             }
+        }
+
+        private sealed class GenerationResult
+        {
+            public GenerationResult(Compilation compilation, ImmutableArray<Diagnostic> diagnostics)
+            {
+                Compilation = compilation;
+                Diagnostics = diagnostics;
+            }
+
+            public Compilation Compilation { get; }
+
+            public ImmutableArray<Diagnostic> Diagnostics { get; }
         }
     }
 }
