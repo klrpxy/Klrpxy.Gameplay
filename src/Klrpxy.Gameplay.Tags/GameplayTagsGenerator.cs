@@ -425,6 +425,42 @@ namespace Klrpxy.Gameplay.Tags
             }
 
             source.Append(indent).AppendLine("}");
+            source.AppendLine();
+            source.Append(indent).AppendLine("public sealed class TagSet");
+            source.Append(indent).AppendLine("{");
+            source.Append(indent).AppendLine("    private readonly global::System.Collections.Generic.HashSet<Tag> tags =");
+            source.Append(indent).AppendLine("        new global::System.Collections.Generic.HashSet<Tag>();");
+            source.AppendLine();
+            source.Append(indent).AppendLine("    public bool Add(Tag tag)");
+            source.Append(indent).AppendLine("    {");
+            source.Append(indent).AppendLine("        if (tag == null)");
+            source.Append(indent).AppendLine("        {");
+            source.Append(indent).AppendLine("            throw new global::System.ArgumentNullException(nameof(tag));");
+            source.Append(indent).AppendLine("        }");
+            source.AppendLine();
+            source.Append(indent).AppendLine("        return tags.Add(tag);");
+            source.Append(indent).AppendLine("    }");
+            source.AppendLine();
+            source.Append(indent).AppendLine("    public bool Remove(Tag tag) => tags.Remove(tag);");
+            source.AppendLine();
+            source.Append(indent).AppendLine("    public bool HasExact(Tag tag) => tags.Contains(tag);");
+            source.AppendLine();
+            source.Append(indent).AppendLine("    public bool Has(Tag tag)");
+            source.Append(indent).AppendLine("    {");
+            source.Append(indent).AppendLine("        foreach (Tag ownedTag in tags)");
+            source.Append(indent).AppendLine("        {");
+            source.Append(indent).AppendLine("            for (Tag candidate = ownedTag; candidate != null; candidate = candidate.GetParent())");
+            source.Append(indent).AppendLine("            {");
+            source.Append(indent).AppendLine("                if (global::System.Object.ReferenceEquals(candidate, tag))");
+            source.Append(indent).AppendLine("                {");
+            source.Append(indent).AppendLine("                    return true;");
+            source.Append(indent).AppendLine("                }");
+            source.Append(indent).AppendLine("            }");
+            source.Append(indent).AppendLine("        }");
+            source.AppendLine();
+            source.Append(indent).AppendLine("        return false;");
+            source.Append(indent).AppendLine("    }");
+            source.Append(indent).AppendLine("}");
             if (namespaceName.Length > 0)
             {
                 source.AppendLine("}");
