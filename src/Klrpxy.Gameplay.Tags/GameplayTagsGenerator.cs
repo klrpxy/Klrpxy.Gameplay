@@ -13,6 +13,66 @@ namespace Klrpxy.Gameplay.Tags.Generator
     [Generator]
     public sealed class GameplayTagsGenerator : ISourceGenerator
     {
+        private static readonly DiagnosticDescriptor InvalidMarkerTarget = new DiagnosticDescriptor(
+            "KTAG001",
+            "Invalid GenerateGameplayTags target",
+            "GenerateGameplayTags can only be applied to a non-generic, top-level static partial class.",
+            "Klrpxy.Gameplay.Tags",
+            DiagnosticSeverity.Error,
+            true);
+
+        private static readonly DiagnosticDescriptor MultipleMarkerRoots = new DiagnosticDescriptor(
+            "KTAG002",
+            "Multiple GenerateGameplayTags roots",
+            "Exactly one static partial class can be marked with GenerateGameplayTags; found {0}.",
+            "Klrpxy.Gameplay.Tags",
+            DiagnosticSeverity.Error,
+            true);
+
+        private static readonly DiagnosticDescriptor InvalidPath = new DiagnosticDescriptor(
+            "KTAG003",
+            "Invalid Tag path",
+            "Tag path '{0}' contains invalid segment '{1}'; each segment must match [A-Z][A-Za-z0-9]*.",
+            "Klrpxy.Gameplay.Tags",
+            DiagnosticSeverity.Error,
+            true);
+
+        private static readonly DiagnosticDescriptor DuplicateExplicitDeclaration = new DiagnosticDescriptor(
+            "KTAG004",
+            "Duplicate explicit Tag declaration",
+            "Tag path '{0}' is explicitly declared more than once.",
+            "Klrpxy.Gameplay.Tags",
+            DiagnosticSeverity.Error,
+            true);
+
+        private static readonly DiagnosticDescriptor ReservedSegment = new DiagnosticDescriptor(
+            "KTAG005",
+            "Reserved Tag path segment",
+            "Tag path '{0}' uses reserved segment '{1}'.",
+            "Klrpxy.Gameplay.Tags",
+            DiagnosticSeverity.Error,
+            true);
+
+        private static readonly DiagnosticDescriptor MissingTagTable = new DiagnosticDescriptor(
+            "KTAG006",
+            "Missing Tag Table",
+            "A marked compilation requires GameplayTags.KlrpxyGameplayTags.additionalfile, but no matching Tag Table was provided.",
+            "Klrpxy.Gameplay.Tags",
+            DiagnosticSeverity.Error,
+            true);
+
+        private static readonly DiagnosticDescriptor AmbiguousTagTables = new DiagnosticDescriptor(
+            "KTAG007",
+            "Ambiguous Tag Table",
+            "A marked compilation requires exactly one GameplayTags.KlrpxyGameplayTags.additionalfile, but {0} matching Tag Tables were provided.",
+            "Klrpxy.Gameplay.Tags",
+            DiagnosticSeverity.Error,
+            true);
+
+        private static readonly HashSet<string> ReservedSegments = new HashSet<string>(
+            new[] { "Equals", "GetHashCode", "GetType", "ToString", "GetPath", "GetParent" },
+            StringComparer.Ordinal);
+
         public void Initialize(GeneratorInitializationContext context)
         {
             context.RegisterForSyntaxNotifications(() => new RootReceiver());
@@ -23,20 +83,67 @@ namespace Klrpxy.Gameplay.Tags.Generator
             context.AddSource("GenerateGameplayTagsAttribute.g.cs", SourceText.From(AttributeSource, Encoding.UTF8));
 
             RootReceiver receiver = context.SyntaxReceiver as RootReceiver;
-            ClassDeclarationSyntax root = receiver == null
-                ? null
-                : receiver.Roots.FirstOrDefault(candidate =>
-                    IsValidRoot(candidate) && HasOfficialMarker(context.Compilation, candidate));
-            AdditionalText table = context.AdditionalFiles.SingleOrDefault(
-                file => string.Equals(
-                    Path.GetFileName(file.Path),
-                    "GameplayTags.KlrpxyGameplayTags.additionalfile",
-                    StringComparison.Ordinal));
-
-            if (root == null || table == null)
+            List<ClassDeclarationSyntax> markedRoots = receiver == null
+                ? new List<ClassDeclarationSyntax>()
+                : receiver.Roots
+                    .Where(candidate => FindOfficialMarker(context.Compilation, candidate) != null)
+                    .ToList();
+            if (markedRoots.Count == 0)
             {
                 return;
             }
+
+            ClassDeclarationSyntax invalidRoot = markedRoots.FirstOrDefault(candidate => !IsValidRoot(candidate));
+            if (invalidRoot != null)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    InvalidMarkerTarget,
+                    FindOfficialMarker(context.Compilation, invalidRoot).GetLocation()));
+                return;
+            }
+
+            if (markedRoots.Count > 1)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    MultipleMarkerRoots,
+                    FindOfficialMarker(context.Compilation, markedRoots[1]).GetLocation(),
+                    markedRoots.Count));
+                return;
+            }
+
+            ClassDeclarationSyntax root = markedRoots[0];
+            List<AdditionalText> tables = context.AdditionalFiles.Where(
+                file => string.Equals(
+                    Path.GetFileName(file.Path),
+                    "GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    StringComparison.Ordinal)).ToList();
+
+            if (tables.Count == 0)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    MissingTagTable,
+                    FindOfficialMarker(context.Compilation, root).GetLocation()));
+                return;
+            }
+
+            if (tables.Count > 1)
+            {
+                AdditionalText conflictingTable = tables[1];
+                SourceText conflictingText = conflictingTable.GetText(context.CancellationToken);
+                TextSpan span = conflictingText == null
+                    ? new TextSpan(0, 0)
+                    : conflictingText.Lines[0].Span;
+                LinePositionSpan lineSpan = conflictingText == null
+                    ? new LinePositionSpan(new LinePosition(0, 0), new LinePosition(0, 0))
+                    : conflictingText.Lines.GetLinePositionSpan(span);
+                context.ReportDiagnostic(Diagnostic.Create(
+                    AmbiguousTagTables,
+                    Location.Create(conflictingTable.Path, span, lineSpan),
+                    tables.Count));
+                return;
+            }
+
+            AdditionalText table = tables[0];
 
             SourceText tableText = table.GetText(context.CancellationToken);
             if (tableText == null)
@@ -44,9 +151,13 @@ namespace Klrpxy.Gameplay.Tags.Generator
                 return;
             }
 
-            context.AddSource(
-                "GameplayTags.g.cs",
-                SourceText.From(GenerateHierarchy(root, ParsePaths(tableText)), Encoding.UTF8));
+            IReadOnlyList<string[]> paths = ParsePaths(context, table, tableText);
+            if (paths != null)
+            {
+                context.AddSource(
+                    "GameplayTags.g.cs",
+                    SourceText.From(GenerateHierarchy(root, paths), Encoding.UTF8));
+            }
         }
 
         private const string AttributeSource = @"// <auto-generated />
@@ -62,10 +173,12 @@ namespace Klrpxy.Gameplay.Tags
         private static bool IsValidRoot(ClassDeclarationSyntax root)
         {
             return root.Modifiers.Any(SyntaxKind.StaticKeyword)
-                && root.Modifiers.Any(SyntaxKind.PartialKeyword);
+                && root.Modifiers.Any(SyntaxKind.PartialKeyword)
+                && root.TypeParameterList == null
+                && !root.Ancestors().OfType<TypeDeclarationSyntax>().Any();
         }
 
-        private static bool HasOfficialMarker(
+        private static AttributeSyntax FindOfficialMarker(
             Compilation compilation,
             ClassDeclarationSyntax root)
         {
@@ -77,7 +190,7 @@ namespace Klrpxy.Gameplay.Tags
                 {
                     if (IsOfficialMarkerType(constructor.ContainingType.ToDisplayString()))
                     {
-                        return true;
+                        return attribute;
                     }
 
                     continue;
@@ -89,7 +202,7 @@ namespace Klrpxy.Gameplay.Tags
                 {
                     if (IsOfficialMarkerType(alias.Target.ToDisplayString()))
                     {
-                        return true;
+                        return attribute;
                     }
 
                     continue;
@@ -102,7 +215,7 @@ namespace Klrpxy.Gameplay.Tags
                 {
                     if (syntaxAliasIsOfficial.Value)
                     {
-                        return true;
+                        return attribute;
                     }
 
                     continue;
@@ -110,11 +223,11 @@ namespace Klrpxy.Gameplay.Tags
 
                 if (IsMarkerName(attribute.Name.ToString()))
                 {
-                    return true;
+                    return attribute;
                 }
             }
 
-            return false;
+            return null;
         }
 
         private static bool? IsOfficialMarkerAlias(ClassDeclarationSyntax root, string aliasName)
@@ -178,20 +291,59 @@ namespace Klrpxy.Gameplay.Tags
                 StringComparison.Ordinal);
         }
 
-        private static IReadOnlyList<string[]> ParsePaths(SourceText text)
+        private static IReadOnlyList<string[]> ParsePaths(
+            GeneratorExecutionContext context,
+            AdditionalText table,
+            SourceText text)
         {
             var paths = new List<string[]>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
+            var explicitlyDeclared = new HashSet<string>(StringComparer.Ordinal);
+            bool hasErrors = false;
 
             foreach (TextLine line in text.Lines)
             {
                 string value = line.ToString().Trim();
-                if (value.Length == 0)
+                if (value.Length == 0 || value.StartsWith("#", StringComparison.Ordinal))
                 {
                     continue;
                 }
 
                 string[] segments = value.Split('.');
+                string invalidSegment = segments.FirstOrDefault(segment => !IsValidSegment(segment));
+                if (invalidSegment != null)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        InvalidPath,
+                        Location.Create(table.Path, line.Span, text.Lines.GetLinePositionSpan(line.Span)),
+                        value,
+                        invalidSegment));
+                    hasErrors = true;
+                    continue;
+                }
+
+                string reservedSegment = segments.FirstOrDefault(ReservedSegments.Contains);
+                if (reservedSegment != null)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        ReservedSegment,
+                        Location.Create(table.Path, line.Span, text.Lines.GetLinePositionSpan(line.Span)),
+                        value,
+                        reservedSegment));
+                    hasErrors = true;
+                    continue;
+                }
+
+                if (!explicitlyDeclared.Add(value))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DuplicateExplicitDeclaration,
+                        Location.Create(table.Path, line.Span, text.Lines.GetLinePositionSpan(line.Span)),
+                        value));
+                    hasErrors = true;
+                    continue;
+                }
+
                 for (int length = 1; length <= segments.Length; length++)
                 {
                     string path = string.Join(".", segments, 0, length);
@@ -202,7 +354,28 @@ namespace Klrpxy.Gameplay.Tags
                 }
             }
 
-            return paths;
+            return hasErrors ? null : paths;
+        }
+
+        private static bool IsValidSegment(string segment)
+        {
+            if (segment.Length == 0 || segment[0] < 'A' || segment[0] > 'Z')
+            {
+                return false;
+            }
+
+            for (int index = 1; index < segment.Length; index++)
+            {
+                char character = segment[index];
+                if ((character < 'A' || character > 'Z')
+                    && (character < 'a' || character > 'z')
+                    && (character < '0' || character > '9'))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static string GenerateHierarchy(ClassDeclarationSyntax root, IReadOnlyList<string[]> paths)

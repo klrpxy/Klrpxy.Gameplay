@@ -15,6 +15,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/KlrpxyGameplayTags/KlrpxyGameplayTags.csproj" />
+    <ProjectReference Include="../../src/Klrpxy.Gameplay.Tags/KlrpxyGameplayTags.csproj" />
   </ItemGroup>
 </Project>

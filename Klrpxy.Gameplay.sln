@@ -2,7 +2,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KlrpxyGameplayTags", "src\KlrpxyGameplayTags\KlrpxyGameplayTags.csproj", "{A3E09F69-1268-4A10-A6B4-4427F85072F1}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KlrpxyGameplayTags", "src\Klrpxy.Gameplay.Tags\KlrpxyGameplayTags.csproj", "{A3E09F69-1268-4A10-A6B4-4427F85072F1}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KlrpxyGameplayTags.Tests", "tests\KlrpxyGameplayTags.Tests\KlrpxyGameplayTags.Tests.csproj", "{7F3A3620-56E4-48ED-95B4-DF35D0540C78}"
 EndProject
