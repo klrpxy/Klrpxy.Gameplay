@@ -16,6 +16,7 @@ namespace KlrpxyGameplayTags.Tests
 {
     public sealed class GameplayTagsGeneratorTests
     {
+        // 验证生成器能够识别指向正式标记特性的 C# 类型别名。
         [Fact]
         public void GeneratorRecognizesMarkerAttributeAlias()
         {
@@ -44,6 +45,7 @@ namespace Consumer
             AssertCompiles(outputCompilation);
         }
 
+        // 验证生成的 Tag 与节点类型不会向消费者暴露可用的构造入口。
         [Fact]
         public void GeneratedTagTypesExposeNoConstructionPath()
         {
@@ -86,6 +88,7 @@ namespace Consumer
                 Assert.Equal(Accessibility.Private, constructor.DeclaredAccessibility));
         }
 
+        // 验证消费者无法构造 Tag，也无法声明未在 Tag Table 中登记的具体 Tag 子类。
         [Fact]
         public void ConsumerCannotConstructOrSubclassUndeclaredTags()
         {
@@ -124,6 +127,7 @@ namespace Consumer
             Assert.Equal(new[] { "CS0122", "CS1729" }, errorIds);
         }
 
+        // 验证生成器不会把其他命名空间中同名的特性误认为正式生成标记。
         [Fact]
         public void GeneratorIgnoresDifferentAttributeWithSameShortName()
         {
@@ -168,6 +172,7 @@ namespace Consumer
             Assert.Empty(outputCompilation.GetTypeByMetadataName("Consumer.Impostor").GetMembers("Unit"));
         }
 
+        // 验证生成结果沿用消费者根类型的命名空间与可访问性。
         [Fact]
         public void GeneratedHierarchyUsesConsumerNamespaceAndAccessibility()
         {
@@ -201,6 +206,7 @@ namespace Company
             Assert.Equal(Accessibility.Internal, root.DeclaredAccessibility);
         }
 
+        // 验证合法消费者能够访问完整层级、规范实例、路径、父级和对象身份语义。
         [Fact]
         public void ValidConsumerCanUseGeneratedHierarchy()
         {
