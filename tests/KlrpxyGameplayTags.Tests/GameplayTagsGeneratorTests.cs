@@ -497,6 +497,230 @@ namespace Company
             Assert.Equal(Accessibility.Internal, root.DeclaredAccessibility);
         }
 
+        // 验证消费者可以把真实生成的规范 Tag 加入 TagSet 并精确测试成员身份。
+        [Fact]
+        public void TagSetAddsAndTestsExactGeneratedTagMembership()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Enemy);
+
+            return tags.HasExact(ProjectTags.Unit.Enemy);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证重复添加同一规范 Tag 不会产生第二份显式状态。
+        [Fact]
+        public void TagSetRejectsDuplicateCanonicalTag()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+
+            return tags.Add(ProjectTags.Unit.Enemy)
+                && !tags.Add(ProjectTags.Unit.Enemy);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证移除真实生成的规范 Tag 后精确成员身份随之消失。
+        [Fact]
+        public void TagSetRemovesExactGeneratedTagMembership()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Enemy);
+
+            return tags.Remove(ProjectTags.Unit.Enemy)
+                && !tags.HasExact(ProjectTags.Unit.Enemy);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证 Tag Match 接受同一 Tag 和后代候选，并拒绝祖先候选的反向匹配。
+        [Fact]
+        public void TagSetMatchesCandidatesDirectionally()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var descendantTags = new TagSet();
+            descendantTags.Add(ProjectTags.Unit.Enemy.Boss);
+            var ancestorTags = new TagSet();
+            ancestorTags.Add(ProjectTags.Unit);
+
+            return descendantTags.Has(ProjectTags.Unit.Enemy.Boss)
+                && descendantTags.Has(ProjectTags.Unit.Enemy)
+                && !ancestorTags.Has(ProjectTags.Unit.Enemy);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy.Boss\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证显式后代匹配祖先时不会把该祖先物化为精确成员。
+        [Fact]
+        public void TagSetDoesNotMaterializeMatchedAncestors()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Enemy.Boss);
+
+            return tags.Has(ProjectTags.Unit)
+                && !tags.HasExact(ProjectTags.Unit)
+                && tags.HasExact(ProjectTags.Unit.Enemy.Boss);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy.Boss\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证 TagSet 拒绝不代表规范 Tag 的空引用。
+        [Fact]
+        public void TagSetRejectsNullTag()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+
+            try
+            {
+                tags.Add(null);
+                return false;
+            }
+            catch (System.ArgumentNullException)
+            {
+                return true;
+            }
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
         // 验证合法消费者能够访问完整层级、规范实例、路径、父级和对象身份语义。
         [Fact]
         public void ValidConsumerCanUseGeneratedHierarchy()
@@ -542,20 +766,25 @@ namespace Consumer
                     "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
                     "Unit.Enemy.Boss\n"));
 
-            AssertCompiles(outputCompilation);
+            Assert.Equal(
+                "Unit|Unit.Enemy|Unit.Enemy.Boss|True|True|True|True|True|True|True",
+                RunConsumerContract(outputCompilation));
+        }
+
+        private static object RunConsumerContract(Compilation compilation)
+        {
+            AssertCompiles(compilation);
 
             using (var assemblyStream = new MemoryStream())
             {
-                EmitResult emitResult = outputCompilation.Emit(assemblyStream);
+                EmitResult emitResult = compilation.Emit(assemblyStream);
                 Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));
 
                 assemblyStream.Position = 0;
                 Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(assemblyStream);
                 MethodInfo verify = assembly.GetType("Consumer.ConsumerContract").GetMethod("Verify");
 
-                Assert.Equal(
-                    "Unit|Unit.Enemy|Unit.Enemy.Boss|True|True|True|True|True|True|True",
-                    verify.Invoke(null, null));
+                return verify.Invoke(null, null);
             }
         }
 
@@ -569,7 +798,7 @@ namespace Consumer
             params AdditionalText[] additionalTexts)
         {
             CSharpCompilation compilation = CSharpCompilation.Create(
-                "ConsumerAssembly",
+                "ConsumerAssembly_" + Guid.NewGuid().ToString("N"),
                 new[]
                 {
                     CSharpSyntaxTree.ParseText(
