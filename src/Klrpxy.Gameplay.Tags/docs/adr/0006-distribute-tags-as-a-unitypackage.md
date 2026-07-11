@@ -1,0 +1,3 @@
+# Distribute Gameplay Tags as a Unity package
+
+The first `Klrpxy.Gameplay.Tags` release is distributed as `Klrpxy.Gameplay.Tags.0.1.0.unitypackage`. Unity imports the generator DLL beneath `Assets`, where its `RoslynAnalyzer` label and disabled runtime platform compatibility are recognized. A UPM folder package was not selected because it did not load the analyzer in the verified Unity host path. The package contains only the generator DLL, its import metadata, and consumer documentation; consumers create their own single Tag Table and annotated root. Prototype and compatibility findings remain repository maintenance documents rather than package contents.

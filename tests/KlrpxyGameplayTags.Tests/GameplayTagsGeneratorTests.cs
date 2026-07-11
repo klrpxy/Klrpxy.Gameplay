@@ -679,6 +679,378 @@ namespace Consumer
             Assert.True((bool)RunConsumerContract(outputCompilation));
         }
 
+        // 验证 TagQuery.Has 使用 TagSet 的方向性 Tag Match。
+        [Fact]
+        public void TagQueryHasMatchesGeneratedDescendantTag()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Enemy.Boss);
+
+            return TagQuery.Has(ProjectTags.Unit.Enemy).Matches(tags);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy.Boss\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证 TagQuery.HasExact 只匹配 TagSet 中的精确成员。
+        [Fact]
+        public void TagQueryHasExactDoesNotMatchGeneratedDescendantTag()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Enemy.Boss);
+
+            return !TagQuery.HasExact(ProjectTags.Unit.Enemy).Matches(tags)
+                && TagQuery.HasExact(ProjectTags.Unit.Enemy.Boss).Matches(tags);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy.Boss\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证 TagQuery.All 组合嵌套查询时要求每个条件都成立。
+        [Fact]
+        public void TagQueryAllCombinesNestedQueries()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Enemy.Boss);
+            tags.Add(ProjectTags.Ability.Cast);
+
+            return TagQuery.All(
+                TagQuery.Has(ProjectTags.Unit.Enemy),
+                TagQuery.HasExact(ProjectTags.Ability.Cast)).Matches(tags);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy.Boss\nAbility.Cast\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证 TagQuery.Any 组合嵌套查询时允许任一条件成立。
+        [Fact]
+        public void TagQueryAnyCombinesNestedQueries()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Enemy.Boss);
+
+            return TagQuery.Any(
+                TagQuery.HasExact(ProjectTags.Ability.Cast),
+                TagQuery.Has(ProjectTags.Unit.Enemy)).Matches(tags);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy.Boss\nAbility.Cast\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证 TagQuery.None 在所有嵌套条件均不成立时匹配。
+        [Fact]
+        public void TagQueryNoneExcludesNestedQueries()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Player);
+
+            return TagQuery.None(
+                TagQuery.Has(ProjectTags.Unit.Enemy),
+                TagQuery.HasExact(ProjectTags.Ability.Cast)).Matches(tags);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Player\nUnit.Enemy\nAbility.Cast\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证 TagQuery 组合器可以在嵌套查询树中求值。
+        [Fact]
+        public void TagQueryCombinatorsEvaluateNestedQueryTree()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Enemy.Boss);
+
+            return TagQuery.All(
+                TagQuery.Any(
+                    TagQuery.Has(ProjectTags.Unit.Player),
+                    TagQuery.Has(ProjectTags.Unit.Enemy)),
+                TagQuery.None(TagQuery.Has(ProjectTags.Ability.Cast))).Matches(tags);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy.Boss\nUnit.Player\nAbility.Cast\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证 TagQuery.None 在任一嵌套条件成立时拒绝 TagSet。
+        [Fact]
+        public void TagQueryNoneRejectsMatchingNestedQuery()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Enemy.Boss);
+
+            return !TagQuery.None(TagQuery.Has(ProjectTags.Unit.Enemy)).Matches(tags);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy.Boss\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证 TagQuery 组合器提供仅接收生成 Tag 的便利重载。
+        [Fact]
+        public void TagQueryCombinatorsAcceptGeneratedTags()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Enemy.Boss);
+            tags.Add(ProjectTags.Ability.Cast);
+
+            return TagQuery.All(ProjectTags.Unit.Enemy, ProjectTags.Ability.Cast).Matches(tags)
+                && TagQuery.Any(ProjectTags.Unit.Player, ProjectTags.Ability.Cast).Matches(tags)
+                && TagQuery.None(ProjectTags.Unit.Player, ProjectTags.Ability.Jump).Matches(tags);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy.Boss\nUnit.Player\nAbility.Cast\nAbility.Jump\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证空 TagQuery 组合器遵循定义的确定性真值语义。
+        [Fact]
+        public void EmptyTagQueryCombinatorsHaveDefinedTruthValues()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+
+            return TagQuery.All().Matches(tags)
+                && !TagQuery.Any().Matches(tags)
+                && TagQuery.None().Matches(tags);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
+        // 验证已创建的 TagQuery 可重复求值且不会改变 TagSet 或查询条件。
+        [Fact]
+        public void TagQueryIsReusableWithoutMutatingItsInputs()
+        {
+            const string source = @"
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(ProjectTags.Unit.Enemy.Boss);
+            TagQuery[] conditions = { TagQuery.Has(ProjectTags.Unit.Enemy) };
+            TagQuery query = TagQuery.All(conditions);
+            conditions[0] = TagQuery.Has(ProjectTags.Unit.Player);
+
+            return query.Matches(tags)
+                && query.Matches(tags)
+                && tags.HasExact(ProjectTags.Unit.Enemy.Boss)
+                && !tags.HasExact(ProjectTags.Unit.Player);
+        }
+    }
+}";
+
+            Compilation outputCompilation = RunGenerator(
+                source,
+                new InMemoryAdditionalText(
+                    "Assets/GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy.Boss\nUnit.Player\n"));
+
+            Assert.True((bool)RunConsumerContract(outputCompilation));
+        }
+
         // 验证 TagSet 拒绝不代表规范 Tag 的空引用。
         [Fact]
         public void TagSetRejectsNullTag()
