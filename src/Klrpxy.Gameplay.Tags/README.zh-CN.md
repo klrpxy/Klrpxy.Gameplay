@@ -8,7 +8,7 @@ Klrpxy Gameplay Tags 会把一份简短的文本文件生成 Unity 项目中类�
 
 1. 从 [v0.1.0 Release](https://github.com/klrpxy/Klrpxy.Gameplay/releases/tag/v0.1.0) 下载 `Klrpxy.Gameplay.Tags.0.1.0.unitypackage`。
 2. 在 Unity 中选择 **Assets > Import Package > Custom Package**，导入下载的文件。
-3. 在 `Assets` 下创建一个文本文件，名称必须严格为 `GameplayTags.KlrpxyGameplayTags.additionalfile`：
+3. 在 `Assets` 下创建一个纯文本文件，名称必须严格为 `GameplayTags.KlrpxyGameplayTags.additionalfile`。这个文件列出项目可用的 Tag，后文将它简称为 **Tag Table**：
 
    ```text
    Unit.Enemy.Boss
@@ -17,7 +17,7 @@ Klrpxy Gameplay Tags 会把一份简短的文本文件生成 Unity 项目中类�
    State.Stunned
    ```
 
-4. 在将要使用这些 Tag 的同一个 Unity 程序集中，新建一个脚本：
+4. 在将要使用这些 Tag 的脚本所在的同一个 Unity 程序集中，新建一个脚本。如果项目没有使用程序集定义文件（`.asmdef`），所有脚本默认都满足这项要求：
 
    ```csharp
    using Klrpxy.Gameplay.Tags;
@@ -37,13 +37,13 @@ Klrpxy Gameplay Tags 会把一份简短的文本文件生成 Unity 项目中类�
 
 如果 `Tags.Unit.Enemy.Boss` 能编译通过或出现在代码补全中，说明配置成功。如果没有生成，请先在 Unity Console 中查看 `KTAG` 诊断，并核对第 3 步的文件名。
 
-## 为什么需要 Tag Table？
+## 为什么使用 Tag Table？
 
 Tag Table 是项目词汇的唯一来源。每个非空行声明一个完整 Tag 路径；声明子节点时，它的父节点也会一并生成。上面的示例会生成 `Unit`、`Unit.Enemy`、`Unit.Enemy.Boss`、`Ability`、`Ability.Cast`、`Ability.Channel`、`State` 和 `State.Stunned`。
 
 这样一来，项目中的代码会安全地共享同一套名称。像 `Unit.Enemey.Boss` 这样的拼写错误会在编译时被发现，而不会在运行时变成难以察觉的字符串不匹配。
 
-在 `Assets` 下只能保留一个 Tag Table。路径区分大小写；每个路径段以大写字母开头，后续只能使用字母或数字。允许空行与整行注释。
+在 `Assets` 下只能保留一个 Tag Table。路径区分大小写；每个路径段以大写字母开头，后续只能使用字母或数字。允许空行与整行注释，但不支持在 Tag 后添加行内注释。
 
 ```text
 # 合法路径
@@ -54,9 +54,9 @@ Unit.Enemy.Boss
 unit.Enemy
 ```
 
-## 保存对象拥有的 Tag
+## 为对象添加 Tag
 
-`TagSet` 保存对象显式拥有且不重复的 Tag。它不会重复存储父 Tag，但匹配时会理解它们的层级关系。
+为每个对象准备一个 `TagSet`：它是该对象显式拥有的 Tag 集合。添加 `Unit.Enemy.Boss` 时，不会把父 Tag 作为独立成员重复保存；但在提问时，它仍会理解 Boss 属于 Enemy。
 
 ```csharp
 var tags = new TagSet();
@@ -86,20 +86,26 @@ casterTags.Add(Tags.Ability.Cast);
 bool canAct = hostileCaster.Matches(casterTags); // true
 ```
 
-`All` 要求所有条件都满足，`Any` 要求至少满足一个，`None` 要求没有条件匹配。只有一个 Tag 时，可以直接使用简洁的 `TagQuery.Has(tag)` 和 `TagQuery.HasExact(tag)`。
+三个组合器的含义如下：
+
+- `All`：所有条件都必须匹配。
+- `Any`：至少一个条件匹配即可。
+- `None`：没有任何条件可以匹配。
+
+只有一个 Tag 时，可以直接使用简洁的 `TagQuery.Has(tag)` 和 `TagQuery.HasExact(tag)`。
 
 ## 排查问题
 
 | 现象 | 检查项 |
 | --- | --- |
 | 没有生成 `Tags` 成员 | Tag Table 是否命名为 `GameplayTags.KlrpxyGameplayTags.additionalfile`、是否只在 `Assets` 下存在一份，以及 Unity 是否已完成编译。 |
-| `KTAG001` 或 `KTAG002` | 在消费者程序集中，必须且只能有一个带 `[GenerateGameplayTags]` 的非泛型、顶层 `static partial` 类。 |
+| `KTAG001` 或 `KTAG002` | 在游戏脚本所在的程序集中，必须且只能有一个带 `[GenerateGameplayTags]` 的非泛型、顶层 `static partial` 类。 |
 | `KTAG003`、`KTAG004` 或 `KTAG005` | 修正 Tag Table 中被定位的行：使用合法路径段、移除重复的显式路径，并避免保留路径段。 |
 | `KTAG006` 或 `KTAG007` | 在 `Assets` 下创建且只创建一个 Tag Table。 |
 
 ## 高级与维护说明
 
-生成器支持 Unity 2022.3 LTS 和 Unity 6。它以基于 Roslyn 3.8.0 的 .NET Standard 2.0 分析器形式分发。导入的 DLL 必须保留大小写准确的 `RoslynAnalyzer` 标签，并禁用运行时平台兼容性；不要在它旁边放置 `Microsoft.CodeAnalysis` DLL。
+生成器支持 Unity 2022.3 LTS 和 Unity 6。它以基于 Roslyn 3.8.0 的 .NET Standard 2.0 分析器形式分发。直接使用 Release 安装包时无需改动导入设置。包维护者必须保留 DLL 大小写准确的 `RoslynAnalyzer` 标签，并禁用运行时平台兼容性；也不要在它旁边放置 `Microsoft.CodeAnalysis` DLL。
 
 在本仓库根目录构建本地安装包：
 
