@@ -1,5 +1,7 @@
 # Klrpxy Gameplay Tags
 
+[中文文档](README.zh-CN.md)
+
 `KlrpxyGameplayTags.dll` is a Unity source generator that creates an engine-agnostic `Tag`, `TagSet`, and `TagQuery` API from one project Tag Table. It supports Unity 2022.3 LTS and Unity 6 with the same .NET Standard 2.0 generator DLL built against Roslyn 3.8.0.
 
 ## Install
