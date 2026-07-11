@@ -2,87 +2,122 @@
 
 [中文文档](README.zh-CN.md)
 
-`KlrpxyGameplayTags.dll` is a Unity source generator that creates an engine-agnostic `Tag`, `TagSet`, and `TagQuery` API from one project Tag Table. It supports Unity 2022.3 LTS and Unity 6 with the same .NET Standard 2.0 generator DLL built against Roslyn 3.8.0.
+Klrpxy Gameplay Tags turns one small text file into type-safe, hierarchical tags for a Unity project. Use it when gameplay code needs to describe categories such as `Unit.Enemy.Boss` without repeatedly passing strings around.
 
-## Install
+## Quick start
 
-Build the local package from the repository root:
+1. Download `Klrpxy.Gameplay.Tags.0.1.0.unitypackage` from the [v0.1.0 release](https://github.com/klrpxy/Klrpxy.Gameplay/releases/tag/v0.1.0).
+2. In Unity, choose **Assets > Import Package > Custom Package** and import the downloaded file.
+3. Under `Assets`, create a text file named exactly `GameplayTags.KlrpxyGameplayTags.additionalfile`:
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File eng/Build-UnityPackage.ps1 -UnityPath "<Unity 2022.3.62f3>/Editor/Unity.exe"
-```
+   ```text
+   Unit.Enemy.Boss
+   Ability.Cast
+   Ability.Channel
+   State.Stunned
+   ```
 
-In Unity, use **Assets > Import Package > Custom Package** and select `artifacts/Klrpxy.Gameplay.Tags.0.1.0.unitypackage`. The package imports `KlrpxyGameplayTags.dll` as an analyzer: runtime platform compatibility is disabled and the DLL has the exact `RoslynAnalyzer` label. Do not copy `Microsoft.CodeAnalysis` DLLs beside the generator.
+4. Add one script in the same Unity assembly that will use the tags:
 
-## Declare a Tag Table
+   ```csharp
+   using Klrpxy.Gameplay.Tags;
 
-Create exactly one file under `Assets` named `GameplayTags.KlrpxyGameplayTags.additionalfile`. Its `KlrpxyGameplayTags` suffix must remain aligned with the generator assembly name.
+   [GenerateGameplayTags]
+   public static partial class Tags
+   {
+   }
+   ```
 
-Write one case-sensitive path per line. Segments must match `[A-Z][A-Za-z0-9]*`. Blank lines and full-line `#` comments are ignored; inline comments are not supported.
+5. After Unity finishes compiling, use the generated tags in your code:
+
+   ```csharp
+   Tag boss = Tags.Unit.Enemy.Boss;
+   Tag enemy = boss.GetParent(); // Tags.Unit.Enemy
+   ```
+
+If `Tags.Unit.Enemy.Boss` compiles or appears in code completion, setup succeeded. If it does not, first check the Unity Console for a `KTAG` diagnostic and verify the file name in step 3.
+
+## Why a Tag Table?
+
+The Tag Table is the single source of truth for the project vocabulary. Each non-empty line declares one tag path; declaring a child also creates its parents. The example above creates `Unit`, `Unit.Enemy`, `Unit.Enemy.Boss`, `Ability`, `Ability.Cast`, `Ability.Channel`, `State`, and `State.Stunned`.
+
+This lets code share the same names safely. A typo such as `Unit.Enemey.Boss` is caught by the compiler instead of becoming a silent string mismatch at runtime.
+
+Keep exactly one Tag Table under `Assets`. Paths are case-sensitive; each segment starts with an uppercase letter and then uses letters or digits. Blank lines and full-line comments are allowed.
 
 ```text
-# Unit tags
+# Valid paths
+Unit.Player
 Unit.Enemy.Boss
-Ability.Cast
+
+# Invalid: each segment must begin with an uppercase letter
+unit.Enemy
 ```
 
-## Generate and use Tags
+## Store the tags an object owns
 
-Mark exactly one non-generic top-level static partial class in the consumer assembly:
-
-```csharp
-using Klrpxy.Gameplay.Tags;
-
-[GenerateGameplayTags]
-public static partial class Tags
-{
-}
-```
-
-The generator adds the declared hierarchy. Every node is a canonical immutable `Tag`:
-
-```csharp
-Tag boss = Tags.Unit.Enemy.Boss;
-Tag parent = boss.GetParent(); // Tags.Unit.Enemy
-```
-
-`TagSet` stores only explicitly owned unique Tags. `Has` uses directional Tag Match (a stored descendant matches its queried ancestor), while `HasExact` checks only the exact member.
+`TagSet` holds the explicit, unique tags owned by an object. It does not duplicate parent tags, but it understands their hierarchy when matching.
 
 ```csharp
 var tags = new TagSet();
 tags.Add(Tags.Unit.Enemy.Boss);
 
-bool broadMatch = tags.Has(Tags.Unit.Enemy);
-bool exactMatch = tags.HasExact(Tags.Unit.Enemy.Boss);
+bool isEnemy = tags.Has(Tags.Unit.Enemy);          // true: Boss is an Enemy
+bool isExactlyEnemy = tags.HasExact(Tags.Unit.Enemy); // false: only Boss was added
+bool isBoss = tags.HasExact(Tags.Unit.Enemy.Boss); // true
 ```
 
-`TagQuery` is immutable and reusable. Build it with `Has`, `HasExact`, `All`, `Any`, and `None`; the combinators also accept Tags directly. Empty `All`, `Any`, and `None` evaluate to `true`, `false`, and `true`.
+Use `Has` for category checks and `HasExact` when the exact tag matters.
+
+## Ask reusable questions with TagQuery
+
+Use `TagQuery` when a check combines several conditions or will be reused. Queries are immutable: evaluating one never changes it or the `TagSet`.
 
 ```csharp
 TagQuery hostileCaster = TagQuery.All(
     TagQuery.Has(Tags.Unit.Enemy),
-    TagQuery.Any(Tags.Ability.Cast, Tags.Ability.Channel));
+    TagQuery.Any(Tags.Ability.Cast, Tags.Ability.Channel),
+    TagQuery.None(Tags.State.Stunned));
 
-bool matches = hostileCaster.Matches(tags);
+var casterTags = new TagSet();
+casterTags.Add(Tags.Unit.Enemy.Boss);
+casterTags.Add(Tags.Ability.Cast);
+
+bool canAct = hostileCaster.Matches(casterTags); // true
 ```
 
-## Diagnostics
+`All` requires every condition, `Any` requires at least one, and `None` requires no condition to match. For one tag, the concise forms are `TagQuery.Has(tag)` and `TagQuery.HasExact(tag)`.
 
-`KTAG001` and `KTAG002` report invalid or multiple generated roots. `KTAG003` reports an invalid path segment, `KTAG004` a duplicate explicit declaration, and `KTAG005` a reserved segment. `KTAG006` and `KTAG007` report a missing or ambiguous Tag Table. Tag Table diagnostics point at the offending AdditionalFile line.
+## Troubleshooting
 
-## Verification
+| What you see | What to check |
+| --- | --- |
+| No generated `Tags` members | The Tag Table is named `GameplayTags.KlrpxyGameplayTags.additionalfile`, exists once under `Assets`, and Unity has finished compiling. |
+| `KTAG001` or `KTAG002` | There must be exactly one non-generic, top-level `static partial` class marked with `[GenerateGameplayTags]` in the consumer assembly. |
+| `KTAG003`, `KTAG004`, or `KTAG005` | Correct the indicated Tag Table line: use valid path segments, remove duplicate explicit paths, and avoid reserved segments. |
+| `KTAG006` or `KTAG007` | Create exactly one Tag Table under `Assets`. |
 
-Run the fast .NET/Roslyn suite during development:
+## Advanced and maintainer notes
+
+The generator supports Unity 2022.3 LTS and Unity 6. It is distributed as a .NET Standard 2.0 Roslyn 3.8.0 analyzer. The imported DLL must retain its exact `RoslynAnalyzer` label with runtime platform compatibility disabled; do not place `Microsoft.CodeAnalysis` DLLs beside it.
+
+To build the local package from this repository:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File eng/Build-UnityPackage.ps1 -UnityPath "<Unity 2022.3.62f3>/Editor/Unity.exe"
+```
+
+Run the .NET/Roslyn suite during development:
 
 ```powershell
 dotnet test Klrpxy.Gameplay.sln -c Release
 ```
 
-Run Unity smoke verification only at the release boundary. It creates temporary host projects and checks both supported editor baselines without adding hosts to this package.
+At the release boundary, run the Unity package smoke test for each supported editor:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File eng/Smoke-Test-UnityPackage.ps1 -UnityPath "<Unity 2022.3.62f3>/Editor/Unity.exe" -UnityVersion 2022.3.62f3
 powershell -NoProfile -ExecutionPolicy Bypass -File eng/Smoke-Test-UnityPackage.ps1 -UnityPath "<Unity 6000.5.0f1>/Editor/Unity.exe" -UnityVersion 6000.5.0f1
 ```
 
-For interactive Unity 6 verification, import the same `.unitypackage` into a test project, create a Tag Table and annotated root, then confirm a generated descendant and its parent at runtime.
+For completeness, empty `All`, `Any`, and `None` queries evaluate to `true`, `false`, and `true` respectively.
