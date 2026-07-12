@@ -17,6 +17,26 @@ namespace KlrpxyGameplayTags.Tests
     public sealed class GameplayTagsGeneratorTests
     {
         [Fact]
+        public void MarkerAttributeComesFromRuntimeInsteadOfGeneratedConsumerSource()
+        {
+            Compilation compilation = RunGenerator(@"
+using Klrpxy.Gameplay.Tags;
+
+[GenerateGameplayTags]
+public static partial class ProjectTags
+{
+    private const string TagTable = ""Unit.Enemy"";
+}");
+
+            Assert.DoesNotContain(
+                compilation.SyntaxTrees,
+                tree => string.Equals(
+                    tree.FilePath,
+                    "GenerateGameplayTagsAttribute.g.cs",
+                    StringComparison.Ordinal));
+        }
+
+        [Fact]
         public void GeneratedGameplayInterfaceReadsClassLocalTagTableAndUsesRuntimeTagSetAndQuery()
         {
             Compilation outputCompilation = RunGenerator(@"

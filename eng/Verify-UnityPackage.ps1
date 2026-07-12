@@ -43,7 +43,7 @@ try
         throw 'Unity package must contain exactly one analyzer DLL and one runtime DLL.'
     }
 
-    if (($analyzer[0].Meta -notmatch '(?m)^- RoslynAnalyzer$') -or ($analyzer[0].Meta -notmatch '(?s)Any:\s*second:\s*enabled: 0'))
+    if (($analyzer[0].Meta -notmatch '(?m)^- RoslynAnalyzer\r?$') -or ($analyzer[0].Meta -notmatch '(?s)Any:\s*second:\s*enabled: 0'))
     {
         throw 'The analyzer DLL must be labelled RoslynAnalyzer with runtime platforms disabled.'
     }

@@ -46,7 +46,7 @@ function Write-Consumer([string]$Path, [string]$Source)
     Set-Content -LiteralPath (Join-Path $Path 'Assets\Consumer.cs') -Value $Source -Encoding utf8
 }
 
-function Invoke-UnityHost([string]$Path, [string]$LogPath)
+function Invoke-UnityHost([string]$Path, [string]$LogPath, [switch]$AllowCompilationErrors)
 {
     $process = Start-Process -FilePath $UnityPath -WorkingDirectory $Path -Wait -PassThru -ArgumentList @(
         '-batchmode',
@@ -56,7 +56,7 @@ function Invoke-UnityHost([string]$Path, [string]$LogPath)
         '.',
         '-logFile',
         'Editor.log')
-    if ($process.ExitCode -ne 0)
+    if ($process.ExitCode -ne 0 -and -not $AllowCompilationErrors)
     {
         throw "Unity exited with code $($process.ExitCode). See $LogPath"
     }
@@ -137,7 +137,7 @@ Unit.invalid-name";
 }
 '@
     $invalidLog = Join-Path $invalidHost 'Editor.log'
-    $invalidOutput = Invoke-UnityHost $invalidHost $invalidLog
+    $invalidOutput = Invoke-UnityHost $invalidHost $invalidLog -AllowCompilationErrors
     $hasInvalidDiagnostic = $invalidOutput -match 'KTAG003'
     if (-not $hasInvalidDiagnostic)
     {
