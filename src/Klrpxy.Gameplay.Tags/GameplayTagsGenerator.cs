@@ -99,6 +99,17 @@ namespace Klrpxy.Gameplay.Tags.Generator
                 return;
             }
 
+            if (context.AdditionalFiles.Any(file => string.Equals(
+                System.IO.Path.GetFileName(file.Path),
+                "GameplayTags.KlrpxyGameplayTags.additionalfile",
+                StringComparison.Ordinal)))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    LegacyExternalTagTable,
+                    FindOfficialMarker(context.Compilation, roots[0].Syntax).GetLocation()));
+                return;
+            }
+
             bool hasInvalidTagTable = false;
             foreach (RootDefinition root in roots)
             {
@@ -119,17 +130,6 @@ namespace Klrpxy.Gameplay.Tags.Generator
 
             if (hasInvalidTagTable)
             {
-                return;
-            }
-
-            if (context.AdditionalFiles.Any(file => string.Equals(
-                System.IO.Path.GetFileName(file.Path),
-                "GameplayTags.KlrpxyGameplayTags.additionalfile",
-                StringComparison.Ordinal)))
-            {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    LegacyExternalTagTable,
-                    FindOfficialMarker(context.Compilation, roots[0].Syntax).GetLocation()));
                 return;
             }
 
