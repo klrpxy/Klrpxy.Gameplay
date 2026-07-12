@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
@@ -16,7 +15,7 @@ namespace Klrpxy.Gameplay.Tags.Generator
         private static readonly DiagnosticDescriptor InvalidMarkerTarget = new DiagnosticDescriptor(
             "KTAG001",
             "Invalid GenerateGameplayTags target",
-            "GenerateGameplayTags can only be applied to a non-generic, top-level static partial class.",
+            "GenerateGameplayTags can only be applied to a public, non-generic, top-level static partial class.",
             "Klrpxy.Gameplay.Tags",
             DiagnosticSeverity.Error,
             true);
@@ -53,18 +52,10 @@ namespace Klrpxy.Gameplay.Tags.Generator
             DiagnosticSeverity.Error,
             true);
 
-        private static readonly DiagnosticDescriptor MissingTagTable = new DiagnosticDescriptor(
+        private static readonly DiagnosticDescriptor InvalidTagTable = new DiagnosticDescriptor(
             "KTAG006",
-            "Missing Tag Table",
-            "A marked compilation requires GameplayTags.KlrpxyGameplayTags.additionalfile, but no matching Tag Table was provided.",
-            "Klrpxy.Gameplay.Tags",
-            DiagnosticSeverity.Error,
-            true);
-
-        private static readonly DiagnosticDescriptor AmbiguousTagTables = new DiagnosticDescriptor(
-            "KTAG007",
-            "Ambiguous Tag Table",
-            "A marked compilation requires exactly one GameplayTags.KlrpxyGameplayTags.additionalfile, but {0} matching Tag Tables were provided.",
+            "Invalid TagTable declaration",
+            "A marked root requires exactly one private const string TagTable field.",
             "Klrpxy.Gameplay.Tags",
             DiagnosticSeverity.Error,
             true);
@@ -85,9 +76,7 @@ namespace Klrpxy.Gameplay.Tags.Generator
             RootReceiver receiver = context.SyntaxReceiver as RootReceiver;
             List<ClassDeclarationSyntax> markedRoots = receiver == null
                 ? new List<ClassDeclarationSyntax>()
-                : receiver.Roots
-                    .Where(candidate => FindOfficialMarker(context.Compilation, candidate) != null)
-                    .ToList();
+                : receiver.Roots.Where(candidate => FindOfficialMarker(context.Compilation, candidate) != null).ToList();
             if (markedRoots.Count == 0)
             {
                 return;
@@ -112,46 +101,24 @@ namespace Klrpxy.Gameplay.Tags.Generator
             }
 
             ClassDeclarationSyntax root = markedRoots[0];
-            List<AdditionalText> tables = context.AdditionalFiles.Where(
-                file => string.Equals(
-                    Path.GetFileName(file.Path),
-                    "GameplayTags.KlrpxyGameplayTags.additionalfile",
-                    StringComparison.Ordinal)).ToList();
-
-            if (tables.Count == 0)
+            INamedTypeSymbol rootSymbol = context.Compilation.GetSemanticModel(root.SyntaxTree)
+                .GetDeclaredSymbol(root);
+            IFieldSymbol[] tagTableFields = rootSymbol.GetMembers("TagTable")
+                .OfType<IFieldSymbol>()
+                .ToArray();
+            if (tagTableFields.Length != 1 || !IsTagTable(tagTableFields[0]))
             {
                 context.ReportDiagnostic(Diagnostic.Create(
-                    MissingTagTable,
+                    InvalidTagTable,
                     FindOfficialMarker(context.Compilation, root).GetLocation()));
                 return;
             }
 
-            if (tables.Count > 1)
-            {
-                AdditionalText conflictingTable = tables[1];
-                SourceText conflictingText = conflictingTable.GetText(context.CancellationToken);
-                TextSpan span = conflictingText == null
-                    ? new TextSpan(0, 0)
-                    : conflictingText.Lines[0].Span;
-                LinePositionSpan lineSpan = conflictingText == null
-                    ? new LinePositionSpan(new LinePosition(0, 0), new LinePosition(0, 0))
-                    : conflictingText.Lines.GetLinePositionSpan(span);
-                context.ReportDiagnostic(Diagnostic.Create(
-                    AmbiguousTagTables,
-                    Location.Create(conflictingTable.Path, span, lineSpan),
-                    tables.Count));
-                return;
-            }
-
-            AdditionalText table = tables[0];
-
-            SourceText tableText = table.GetText(context.CancellationToken);
-            if (tableText == null)
-            {
-                return;
-            }
-
-            IReadOnlyList<string[]> paths = ParsePaths(context, table, tableText);
+            IFieldSymbol tagTable = tagTableFields[0];
+            IReadOnlyList<string[]> paths = ParsePaths(
+                context,
+                tagTable.Locations[0],
+                tagTable.ConstantValue as string ?? string.Empty);
             if (paths != null)
             {
                 context.AddSource(
@@ -172,10 +139,18 @@ namespace Klrpxy.Gameplay.Tags
 
         private static bool IsValidRoot(ClassDeclarationSyntax root)
         {
-            return root.Modifiers.Any(SyntaxKind.StaticKeyword)
+            return root.Modifiers.Any(SyntaxKind.PublicKeyword)
+                && root.Modifiers.Any(SyntaxKind.StaticKeyword)
                 && root.Modifiers.Any(SyntaxKind.PartialKeyword)
                 && root.TypeParameterList == null
                 && !root.Ancestors().OfType<TypeDeclarationSyntax>().Any();
+        }
+
+        private static bool IsTagTable(IFieldSymbol field)
+        {
+            return field.DeclaredAccessibility == Accessibility.Private
+                && field.IsConst
+                && field.Type.SpecialType == SpecialType.System_String;
         }
 
         private static AttributeSyntax FindOfficialMarker(
@@ -268,7 +243,6 @@ namespace Klrpxy.Gameplay.Tags
         private static bool IsMarkerName(string name)
         {
             name = NormalizeName(name);
-
             return string.Equals(name, "GenerateGameplayTags", StringComparison.Ordinal)
                 || string.Equals(name, "GenerateGameplayTagsAttribute", StringComparison.Ordinal)
                 || string.Equals(name, "Klrpxy.Gameplay.Tags.GenerateGameplayTags", StringComparison.Ordinal)
@@ -293,17 +267,17 @@ namespace Klrpxy.Gameplay.Tags
 
         private static IReadOnlyList<string[]> ParsePaths(
             GeneratorExecutionContext context,
-            AdditionalText table,
-            SourceText text)
+            Location location,
+            string table)
         {
             var paths = new List<string[]>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var explicitlyDeclared = new HashSet<string>(StringComparer.Ordinal);
             bool hasErrors = false;
 
-            foreach (TextLine line in text.Lines)
+            foreach (string rawLine in table.Replace("\r\n", "\n").Split('\n'))
             {
-                string value = line.ToString().Trim();
+                string value = rawLine.Trim();
                 if (value.Length == 0 || value.StartsWith("#", StringComparison.Ordinal))
                 {
                     continue;
@@ -313,11 +287,7 @@ namespace Klrpxy.Gameplay.Tags
                 string invalidSegment = segments.FirstOrDefault(segment => !IsValidSegment(segment));
                 if (invalidSegment != null)
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        InvalidPath,
-                        Location.Create(table.Path, line.Span, text.Lines.GetLinePositionSpan(line.Span)),
-                        value,
-                        invalidSegment));
+                    context.ReportDiagnostic(Diagnostic.Create(InvalidPath, location, value, invalidSegment));
                     hasErrors = true;
                     continue;
                 }
@@ -325,21 +295,14 @@ namespace Klrpxy.Gameplay.Tags
                 string reservedSegment = segments.FirstOrDefault(ReservedSegments.Contains);
                 if (reservedSegment != null)
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        ReservedSegment,
-                        Location.Create(table.Path, line.Span, text.Lines.GetLinePositionSpan(line.Span)),
-                        value,
-                        reservedSegment));
+                    context.ReportDiagnostic(Diagnostic.Create(ReservedSegment, location, value, reservedSegment));
                     hasErrors = true;
                     continue;
                 }
 
                 if (!explicitlyDeclared.Add(value))
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        DuplicateExplicitDeclaration,
-                        Location.Create(table.Path, line.Span, text.Lines.GetLinePositionSpan(line.Span)),
-                        value));
+                    context.ReportDiagnostic(Diagnostic.Create(DuplicateExplicitDeclaration, location, value));
                     hasErrors = true;
                     continue;
                 }
@@ -381,7 +344,6 @@ namespace Klrpxy.Gameplay.Tags
         private static string GenerateHierarchy(ClassDeclarationSyntax root, IReadOnlyList<string[]> paths)
         {
             string namespaceName = GetNamespace(root);
-            string accessibility = root.Modifiers.Any(SyntaxKind.PublicKeyword) ? "public" : "internal";
             var source = new StringBuilder();
 
             source.AppendLine("// <auto-generated />");
@@ -392,19 +354,33 @@ namespace Klrpxy.Gameplay.Tags
             }
 
             string indent = namespaceName.Length > 0 ? "    " : string.Empty;
-            source.Append(indent).Append(accessibility).Append(" static partial class ")
+            source.Append(indent).Append("public static partial class ")
                 .Append(root.Identifier.ValueText).AppendLine();
             source.Append(indent).AppendLine("{");
             foreach (string[] path in paths.Where(path => path.Length == 1))
             {
-                source.Append(indent).Append("    public static Tag.").Append(GetNodeName(path))
-                    .Append(' ').Append(path[0]).Append(" => Tag.").Append(GetNodeName(path))
-                    .AppendLine(".Instance;");
+                source.Append(indent).Append("    public static Tag ").Append(path[0])
+                    .Append(" => Tag.").Append(GetFieldName(path)).AppendLine(";");
             }
 
             source.Append(indent).AppendLine("}");
             source.AppendLine();
-            source.Append(indent).AppendLine("public class Tag");
+            AppendTag(source, indent, paths);
+            source.AppendLine();
+            AppendTagSet(source, indent);
+            source.AppendLine();
+            AppendTagQuery(source, indent);
+            if (namespaceName.Length > 0)
+            {
+                source.AppendLine("}");
+            }
+
+            return source.ToString();
+        }
+
+        private static void AppendTag(StringBuilder source, string indent, IReadOnlyList<string[]> paths)
+        {
+            source.Append(indent).AppendLine("public sealed class Tag");
             source.Append(indent).AppendLine("{");
             source.Append(indent).AppendLine("    private readonly string path;");
             source.Append(indent).AppendLine("    private readonly Tag parent;");
@@ -416,133 +392,86 @@ namespace Klrpxy.Gameplay.Tags
             source.Append(indent).AppendLine("    }");
             source.AppendLine();
             source.Append(indent).AppendLine("    public string GetPath() => path;");
-            source.AppendLine();
             source.Append(indent).AppendLine("    public Tag GetParent() => parent;");
+            source.AppendLine();
 
             foreach (string[] path in paths)
             {
-                AppendNode(source, indent, path, paths);
+                string parent = path.Length == 1 ? "null" : GetFieldName(path.Take(path.Length - 1).ToArray());
+                source.Append(indent).Append("    internal static readonly Tag ").Append(GetFieldName(path))
+                    .Append(" = new Tag(\"").Append(string.Join(".", path)).Append("\", ")
+                    .Append(parent).AppendLine(");");
             }
 
-            source.Append(indent).AppendLine("}");
+            foreach (string[] path in paths)
+            {
+                foreach (string[] child in paths.Where(candidate =>
+                    candidate.Length == path.Length + 1 && HasPrefix(candidate, path)))
+                {
+                    source.Append(indent).Append("    public Tag ").Append(child[child.Length - 1])
+                        .Append(" => ").Append(GetFieldName(child)).AppendLine(";");
+                }
+            }
+
             source.AppendLine();
-            source.Append(indent).AppendLine("public sealed class TagSet");
-            source.Append(indent).AppendLine("{");
-            source.Append(indent).AppendLine("    private readonly global::System.Collections.Generic.HashSet<Tag> tags =");
-            source.Append(indent).AppendLine("        new global::System.Collections.Generic.HashSet<Tag>();");
-            source.AppendLine();
-            source.Append(indent).AppendLine("    public bool Add(Tag tag)");
+            source.Append(indent).AppendLine("    internal static bool IsSameOrDescendant(Tag candidate, Tag queried)");
             source.Append(indent).AppendLine("    {");
-            source.Append(indent).AppendLine("        if (tag == null)");
+            source.Append(indent).AppendLine("        for (Tag current = candidate; current != null; current = current.parent)");
             source.Append(indent).AppendLine("        {");
-            source.Append(indent).AppendLine("            throw new global::System.ArgumentNullException(nameof(tag));");
-            source.Append(indent).AppendLine("        }");
-            source.AppendLine();
-            source.Append(indent).AppendLine("        return tags.Add(tag);");
-            source.Append(indent).AppendLine("    }");
-            source.AppendLine();
-            source.Append(indent).AppendLine("    public bool Remove(Tag tag) => tags.Remove(tag);");
-            source.AppendLine();
-            source.Append(indent).AppendLine("    public bool HasExact(Tag tag) => tags.Contains(tag);");
-            source.AppendLine();
-            source.Append(indent).AppendLine("    public bool Has(Tag tag)");
-            source.Append(indent).AppendLine("    {");
-            source.Append(indent).AppendLine("        foreach (Tag ownedTag in tags)");
-            source.Append(indent).AppendLine("        {");
-            source.Append(indent).AppendLine("            for (Tag candidate = ownedTag; candidate != null; candidate = candidate.GetParent())");
+            source.Append(indent).AppendLine("            if (global::System.Object.ReferenceEquals(current, queried))");
             source.Append(indent).AppendLine("            {");
-            source.Append(indent).AppendLine("                if (global::System.Object.ReferenceEquals(candidate, tag))");
-            source.Append(indent).AppendLine("                {");
-            source.Append(indent).AppendLine("                    return true;");
-            source.Append(indent).AppendLine("                }");
+            source.Append(indent).AppendLine("                return true;");
             source.Append(indent).AppendLine("            }");
             source.Append(indent).AppendLine("        }");
             source.AppendLine();
             source.Append(indent).AppendLine("        return false;");
             source.Append(indent).AppendLine("    }");
             source.Append(indent).AppendLine("}");
+        }
+
+        private static void AppendTagSet(StringBuilder source, string indent)
+        {
+            source.Append(indent).AppendLine("public sealed class TagSet");
+            source.Append(indent).AppendLine("{");
+            source.Append(indent).AppendLine("    private readonly global::Klrpxy.Gameplay.Tags.Runtime.TagSetRuntime<Tag> runtime =");
+            source.Append(indent).AppendLine("        new global::Klrpxy.Gameplay.Tags.Runtime.TagSetRuntime<Tag>();");
             source.AppendLine();
+            source.Append(indent).AppendLine("    public bool Add(Tag tag) => runtime.Add(tag);");
+            source.Append(indent).AppendLine("    public bool Remove(Tag tag) => runtime.Remove(tag);");
+            source.Append(indent).AppendLine("    public bool HasExact(Tag tag) => runtime.HasExact(tag);");
+            source.Append(indent).AppendLine("    public bool Has(Tag tag) => runtime.Has(tag, Tag.IsSameOrDescendant);");
+            source.Append(indent).AppendLine("    internal global::Klrpxy.Gameplay.Tags.Runtime.TagSetRuntime<Tag> Runtime => runtime;");
+            source.Append(indent).AppendLine("}");
+        }
+
+        private static void AppendTagQuery(StringBuilder source, string indent)
+        {
             source.Append(indent).AppendLine("public sealed class TagQuery");
             source.Append(indent).AppendLine("{");
-            source.Append(indent).AppendLine("    private readonly global::System.Func<TagSet, bool> matches;");
+            source.Append(indent).AppendLine("    private readonly global::Klrpxy.Gameplay.Tags.Runtime.TagQueryRuntime<Tag> runtime;");
             source.AppendLine();
-            source.Append(indent).AppendLine("    private TagQuery(global::System.Func<TagSet, bool> matches)");
+            source.Append(indent).AppendLine("    private TagQuery(global::Klrpxy.Gameplay.Tags.Runtime.TagQueryRuntime<Tag> runtime)");
             source.Append(indent).AppendLine("    {");
-            source.Append(indent).AppendLine("        this.matches = matches;");
+            source.Append(indent).AppendLine("        this.runtime = runtime;");
             source.Append(indent).AppendLine("    }");
             source.AppendLine();
-            source.Append(indent).AppendLine("    public static TagQuery Has(Tag tag)");
-            source.Append(indent).AppendLine("    {");
-            source.Append(indent).AppendLine("        return new TagQuery(tags => tags.Has(tag));");
-            source.Append(indent).AppendLine("    }");
-            source.AppendLine();
-            source.Append(indent).AppendLine("    public static TagQuery HasExact(Tag tag)");
-            source.Append(indent).AppendLine("    {");
-            source.Append(indent).AppendLine("        return new TagQuery(tags => tags.HasExact(tag));");
-            source.Append(indent).AppendLine("    }");
-            source.AppendLine();
-            source.Append(indent).AppendLine("    public static TagQuery All(params TagQuery[] queries)");
-            source.Append(indent).AppendLine("    {");
-            source.Append(indent).AppendLine("        TagQuery[] copy = Copy(queries);");
-            source.Append(indent).AppendLine("        return new TagQuery(tags =>");
-            source.Append(indent).AppendLine("        {");
-            source.Append(indent).AppendLine("            foreach (TagQuery query in copy)");
-            source.Append(indent).AppendLine("            {");
-            source.Append(indent).AppendLine("                if (!query.Matches(tags))");
-            source.Append(indent).AppendLine("                {");
-            source.Append(indent).AppendLine("                    return false;");
-            source.Append(indent).AppendLine("                }");
-            source.Append(indent).AppendLine("            }");
-            source.AppendLine();
-            source.Append(indent).AppendLine("            return true;");
-            source.Append(indent).AppendLine("        });");
-            source.Append(indent).AppendLine("    }");
-            source.AppendLine();
+            source.Append(indent).AppendLine("    public static TagQuery Has(Tag tag) => new TagQuery(");
+            source.Append(indent).AppendLine("        new global::Klrpxy.Gameplay.Tags.Runtime.TagQueryRuntime<Tag>(tags => tags.Has(tag, Tag.IsSameOrDescendant)));");
+            source.Append(indent).AppendLine("    public static TagQuery HasExact(Tag tag) => new TagQuery(");
+            source.Append(indent).AppendLine("        new global::Klrpxy.Gameplay.Tags.Runtime.TagQueryRuntime<Tag>(tags => tags.HasExact(tag)));");
+            source.Append(indent).AppendLine("    public static TagQuery All(params TagQuery[] queries) => new TagQuery(");
+            source.Append(indent).AppendLine("        global::Klrpxy.Gameplay.Tags.Runtime.TagQueryRuntime<Tag>.All(ToRuntime(queries)));");
             source.Append(indent).AppendLine("    public static TagQuery All(params Tag[] tags) => All(ToQueries(tags));");
-            source.AppendLine();
             source.Append(indent).AppendLine("    public static TagQuery All() => All(new TagQuery[0]);");
-            source.AppendLine();
-            source.Append(indent).AppendLine("    public static TagQuery Any(params TagQuery[] queries)");
-            source.Append(indent).AppendLine("    {");
-            source.Append(indent).AppendLine("        TagQuery[] copy = Copy(queries);");
-            source.Append(indent).AppendLine("        return new TagQuery(tags =>");
-            source.Append(indent).AppendLine("        {");
-            source.Append(indent).AppendLine("            foreach (TagQuery query in copy)");
-            source.Append(indent).AppendLine("            {");
-            source.Append(indent).AppendLine("                if (query.Matches(tags))");
-            source.Append(indent).AppendLine("                {");
-            source.Append(indent).AppendLine("                    return true;");
-            source.Append(indent).AppendLine("                }");
-            source.Append(indent).AppendLine("            }");
-            source.AppendLine();
-            source.Append(indent).AppendLine("            return false;");
-            source.Append(indent).AppendLine("        });");
-            source.Append(indent).AppendLine("    }");
-            source.AppendLine();
+            source.Append(indent).AppendLine("    public static TagQuery Any(params TagQuery[] queries) => new TagQuery(");
+            source.Append(indent).AppendLine("        global::Klrpxy.Gameplay.Tags.Runtime.TagQueryRuntime<Tag>.Any(ToRuntime(queries)));");
             source.Append(indent).AppendLine("    public static TagQuery Any(params Tag[] tags) => Any(ToQueries(tags));");
-            source.AppendLine();
             source.Append(indent).AppendLine("    public static TagQuery Any() => Any(new TagQuery[0]);");
-            source.AppendLine();
-            source.Append(indent).AppendLine("    public static TagQuery None(params TagQuery[] queries)");
-            source.Append(indent).AppendLine("    {");
-            source.Append(indent).AppendLine("        TagQuery[] copy = Copy(queries);");
-            source.Append(indent).AppendLine("        return new TagQuery(tags =>");
-            source.Append(indent).AppendLine("        {");
-            source.Append(indent).AppendLine("            foreach (TagQuery query in copy)");
-            source.Append(indent).AppendLine("            {");
-            source.Append(indent).AppendLine("                if (query.Matches(tags))");
-            source.Append(indent).AppendLine("                {");
-            source.Append(indent).AppendLine("                    return false;");
-            source.Append(indent).AppendLine("                }");
-            source.Append(indent).AppendLine("            }");
-            source.AppendLine();
-            source.Append(indent).AppendLine("            return true;");
-            source.Append(indent).AppendLine("        });");
-            source.Append(indent).AppendLine("    }");
-            source.AppendLine();
+            source.Append(indent).AppendLine("    public static TagQuery None(params TagQuery[] queries) => new TagQuery(");
+            source.Append(indent).AppendLine("        global::Klrpxy.Gameplay.Tags.Runtime.TagQueryRuntime<Tag>.None(ToRuntime(queries)));");
             source.Append(indent).AppendLine("    public static TagQuery None(params Tag[] tags) => None(ToQueries(tags));");
-            source.AppendLine();
             source.Append(indent).AppendLine("    public static TagQuery None() => None(new TagQuery[0]);");
+            source.Append(indent).AppendLine("    public bool Matches(TagSet tags) => runtime.Matches(tags.Runtime);");
             source.AppendLine();
             source.Append(indent).AppendLine("    private static TagQuery[] ToQueries(Tag[] tags)");
             source.Append(indent).AppendLine("    {");
@@ -555,56 +484,17 @@ namespace Klrpxy.Gameplay.Tags
             source.Append(indent).AppendLine("        return queries;");
             source.Append(indent).AppendLine("    }");
             source.AppendLine();
-            source.Append(indent).AppendLine("    private static TagQuery[] Copy(TagQuery[] queries)");
+            source.Append(indent).AppendLine("    private static global::Klrpxy.Gameplay.Tags.Runtime.TagQueryRuntime<Tag>[] ToRuntime(TagQuery[] queries)");
             source.Append(indent).AppendLine("    {");
-            source.Append(indent).AppendLine("        var copy = new TagQuery[queries.Length];");
-            source.Append(indent).AppendLine("        global::System.Array.Copy(queries, copy, queries.Length);");
-            source.Append(indent).AppendLine("        return copy;");
-            source.Append(indent).AppendLine("    }");
-            source.AppendLine();
-            source.Append(indent).AppendLine("    public bool Matches(TagSet tags) => matches(tags);");
-            source.Append(indent).AppendLine("}");
-            if (namespaceName.Length > 0)
-            {
-                source.AppendLine("}");
-            }
-
-            return source.ToString();
-        }
-
-        private static void AppendNode(
-            StringBuilder source,
-            string indent,
-            string[] path,
-            IReadOnlyList<string[]> paths)
-        {
-            string nodeName = GetNodeName(path);
-            string fullPath = string.Join(".", path);
-            string parent = path.Length == 1
-                ? "null"
-                : GetNodeName(path.Take(path.Length - 1).ToArray()) + ".Instance";
-
-            source.AppendLine();
-            source.Append(indent).Append("    public sealed class ").Append(nodeName).AppendLine(" : Tag");
-            source.Append(indent).AppendLine("    {");
-            source.Append(indent).Append("        private ").Append(nodeName).Append("() : base(\"")
-                .Append(fullPath).Append("\", ").Append(parent).AppendLine(")");
+            source.Append(indent).AppendLine("        var runtimes = new global::Klrpxy.Gameplay.Tags.Runtime.TagQueryRuntime<Tag>[queries.Length];");
+            source.Append(indent).AppendLine("        for (int index = 0; index < queries.Length; index++)");
             source.Append(indent).AppendLine("        {");
+            source.Append(indent).AppendLine("            runtimes[index] = queries[index].runtime;");
             source.Append(indent).AppendLine("        }");
             source.AppendLine();
-            source.Append(indent).Append("        public static ").Append(nodeName)
-                .Append(" Instance { get; } = new ").Append(nodeName).AppendLine("();");
-
-            foreach (string[] child in paths.Where(candidate =>
-                candidate.Length == path.Length + 1 && HasPrefix(candidate, path)))
-            {
-                source.AppendLine();
-                source.Append(indent).Append("        public ").Append(GetNodeName(child)).Append(' ')
-                    .Append(child[child.Length - 1]).Append(" => ").Append(GetNodeName(child))
-                    .AppendLine(".Instance;");
-            }
-
+            source.Append(indent).AppendLine("        return runtimes;");
             source.Append(indent).AppendLine("    }");
+            source.Append(indent).AppendLine("}");
         }
 
         private static bool HasPrefix(string[] candidate, string[] prefix)
@@ -620,9 +510,9 @@ namespace Klrpxy.Gameplay.Tags
             return true;
         }
 
-        private static string GetNodeName(string[] path)
+        private static string GetFieldName(string[] path)
         {
-            return "__" + string.Join("_", path) + "Node";
+            return "__" + string.Join("_", path);
         }
 
         private static string GetNamespace(SyntaxNode node)
@@ -640,12 +530,10 @@ namespace Klrpxy.Gameplay.Tags
             public void OnVisitSyntaxNode(SyntaxNode syntaxNode)
             {
                 ClassDeclarationSyntax declaration = syntaxNode as ClassDeclarationSyntax;
-                if (declaration == null || declaration.AttributeLists.Count == 0)
+                if (declaration != null && declaration.AttributeLists.Count > 0)
                 {
-                    return;
+                    Roots.Add(declaration);
                 }
-
-                Roots.Add(declaration);
             }
         }
     }
