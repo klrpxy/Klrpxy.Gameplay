@@ -7,4 +7,4 @@
 
 ## Relationships
 
-- **Stats -> Tags**: Stats may later use Tags for classification, filtering, and broad target selection. Tags remains a separate context from Stats.
+- **Stats -> Tags**: A StatsOwner owns a TagSet that classifies the gameplay object which owns its stat sets. Tags remains a separate context from Stats.
