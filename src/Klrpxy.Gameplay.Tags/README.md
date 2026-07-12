@@ -12,14 +12,15 @@ Klrpxy Gameplay Tags turns a class-local Tag Table into type-safe, hierarchical 
 
    ```csharp
    using Klrpxy.Gameplay.Tags;
-
+   
    [GenerateGameplayTags]
-   public static partial class Tags
-   {
-       private const string TagTable = @"Unit.Enemy.Boss
-   Ability.Cast
-   Ability.Channel
-   State.Stunned";
+   public static partial class Tags {
+       private const string TagTable =@"
+           Unit.Enemy.Boss
+           Ability.Cast
+           Ability.Channel
+           State.Stunned
+       ";
    }
    ```
 
