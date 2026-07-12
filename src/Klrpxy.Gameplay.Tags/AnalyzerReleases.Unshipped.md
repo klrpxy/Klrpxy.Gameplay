@@ -7,5 +7,4 @@ KTAG002 | Klrpxy.Gameplay.Tags | Error | Multiple GenerateGameplayTags roots
 KTAG003 | Klrpxy.Gameplay.Tags | Error | Invalid Tag path
 KTAG004 | Klrpxy.Gameplay.Tags | Error | Duplicate explicit Tag declaration
 KTAG005 | Klrpxy.Gameplay.Tags | Error | Reserved Tag path segment
-KTAG006 | Klrpxy.Gameplay.Tags | Error | Missing Tag Table
-KTAG007 | Klrpxy.Gameplay.Tags | Error | Ambiguous Tag Table
+KTAG006 | Klrpxy.Gameplay.Tags | Error | Invalid TagTable declaration
