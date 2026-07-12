@@ -9,12 +9,33 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Emit;
+using Microsoft.CodeAnalysis.Text;
 using Xunit;
 
 namespace KlrpxyGameplayTags.Tests
 {
     public sealed class GameplayTagsGeneratorTests
     {
+        [Fact]
+        public void MarkerAttributeComesFromRuntimeInsteadOfGeneratedConsumerSource()
+        {
+            Compilation compilation = RunGenerator(@"
+using Klrpxy.Gameplay.Tags;
+
+[GenerateGameplayTags]
+public static partial class ProjectTags
+{
+    private const string TagTable = ""Unit.Enemy"";
+}");
+
+            Assert.DoesNotContain(
+                compilation.SyntaxTrees,
+                tree => string.Equals(
+                    tree.FilePath,
+                    "GenerateGameplayTagsAttribute.g.cs",
+                    StringComparison.Ordinal));
+        }
+
         [Fact]
         public void GeneratedGameplayInterfaceReadsClassLocalTagTableAndUsesRuntimeTagSetAndQuery()
         {
@@ -343,6 +364,23 @@ public static partial class Duplicate
         }
 
         [Fact]
+        public void LegacyExternalTagTableProducesMigrationDiagnostic()
+        {
+            GenerationResult result = RunGeneratorWithDiagnostics(
+                @"
+using Klrpxy.Gameplay.Tags;
+[GenerateGameplayTags]
+public static partial class ProjectTags { }",
+                new TestAdditionalText(
+                    "GameplayTags.KlrpxyGameplayTags.additionalfile",
+                    "Unit.Enemy.Boss"));
+
+            Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("KTAG007", diagnostic.Id);
+            Assert.Contains("TagTable", diagnostic.GetMessage());
+        }
+
+        [Fact]
         public void InvalidTagTablePathsAreReportedWhileBlankLinesAndCommentsAreIgnored()
         {
             GenerationResult result = RunGeneratorWithDiagnostics(@"
@@ -417,7 +455,9 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
             return RunGeneratorWithDiagnostics(source).Compilation;
         }
 
-        private static GenerationResult RunGeneratorWithDiagnostics(string source)
+        private static GenerationResult RunGeneratorWithDiagnostics(
+            string source,
+            params AdditionalText[] additionalFiles)
         {
             CSharpCompilation compilation = CSharpCompilation.Create(
                 "ConsumerAssembly_" + Guid.NewGuid().ToString("N"),
@@ -433,6 +473,7 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
 
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
                 new ISourceGenerator[] { new GameplayTagsGenerator() },
+                additionalTexts: additionalFiles,
                 parseOptions: new CSharpParseOptions(LanguageVersion.CSharp8));
 
             driver.RunGeneratorsAndUpdateCompilation(
@@ -470,6 +511,24 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
             public Compilation Compilation { get; }
 
             public ImmutableArray<Diagnostic> Diagnostics { get; }
+        }
+
+        private sealed class TestAdditionalText : AdditionalText
+        {
+            private readonly SourceText text;
+
+            public TestAdditionalText(string path, string value)
+            {
+                Path = path;
+                text = SourceText.From(value);
+            }
+
+            public override string Path { get; }
+
+            public override SourceText GetText(System.Threading.CancellationToken cancellationToken = default)
+            {
+                return text;
+            }
         }
     }
 }
