@@ -508,10 +508,42 @@ namespace Klrpxy.Gameplay.Tags
 
         private static void AppendTagSet(StringBuilder source, string indent)
         {
+            source.Append(indent).AppendLine("public enum TagSetChangeKind");
+            source.Append(indent).AppendLine("{");
+            source.Append(indent).AppendLine("    Added,");
+            source.Append(indent).AppendLine("    Removed");
+            source.Append(indent).AppendLine("}");
+            source.AppendLine();
+            source.Append(indent).AppendLine("public sealed class TagSetChange");
+            source.Append(indent).AppendLine("{");
+            source.Append(indent).AppendLine("    internal TagSetChange(Tag tag, TagSetChangeKind kind)");
+            source.Append(indent).AppendLine("    {");
+            source.Append(indent).AppendLine("        Tag = tag;");
+            source.Append(indent).AppendLine("        Kind = kind;");
+            source.Append(indent).AppendLine("    }");
+            source.AppendLine();
+            source.Append(indent).AppendLine("    public Tag Tag { get; }");
+            source.Append(indent).AppendLine("    public TagSetChangeKind Kind { get; }");
+            source.Append(indent).AppendLine("}");
+            source.AppendLine();
             source.Append(indent).AppendLine("public sealed class TagSet");
             source.Append(indent).AppendLine("{");
             source.Append(indent).AppendLine("    private readonly global::Klrpxy.Gameplay.Tags.Runtime.TagSetRuntime<Tag> runtime =");
             source.Append(indent).AppendLine("        new global::Klrpxy.Gameplay.Tags.Runtime.TagSetRuntime<Tag>();");
+            source.AppendLine();
+            source.Append(indent).AppendLine("    public TagSet()");
+            source.Append(indent).AppendLine("    {");
+            source.Append(indent).AppendLine("        runtime.OnChanged += change =>");
+            source.Append(indent).AppendLine("        {");
+            source.Append(indent).AppendLine("            global::System.Action<TagSetChange> handler = OnChanged;");
+            source.Append(indent).AppendLine("            if (handler != null)");
+            source.Append(indent).AppendLine("            {");
+            source.Append(indent).AppendLine("                handler(new TagSetChange(change.Tag, (TagSetChangeKind)change.Kind));");
+            source.Append(indent).AppendLine("            }");
+            source.Append(indent).AppendLine("        };");
+            source.Append(indent).AppendLine("    }");
+            source.AppendLine();
+            source.Append(indent).AppendLine("    public event global::System.Action<TagSetChange> OnChanged;");
             source.AppendLine();
             source.Append(indent).AppendLine("    public bool Add(Tag tag) => runtime.Add(tag);");
             source.Append(indent).AppendLine("    public bool Remove(Tag tag) => runtime.Remove(tag);");
