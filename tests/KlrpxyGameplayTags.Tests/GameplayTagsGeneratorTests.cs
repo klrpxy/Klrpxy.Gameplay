@@ -101,6 +101,46 @@ namespace Consumer
         }
 
         [Fact]
+        public void GeneratedGameplayInterfacePublishesTagSetChangesOnlyForActualMutations()
+        {
+            Compilation outputCompilation = RunGenerator(@"
+using System.Collections.Generic;
+using Klrpxy.Gameplay.Tags;
+
+namespace Consumer
+{
+    [GenerateGameplayTags]
+    public static partial class ProjectTags
+    {
+        private const string TagTable = ""Unit.Enemy.Boss"";
+    }
+
+    public static class ConsumerContract
+    {
+        public static string Verify()
+        {
+            var tags = new TagSet();
+            var changes = new List<string>();
+            tags.OnChanged += change => changes.Add(change.Tag.GetPath() + "":"" + change.Kind);
+
+            tags.Add(ProjectTags.Unit.Enemy.Boss);
+            tags.Add(ProjectTags.Unit.Enemy.Boss);
+            tags.Remove(ProjectTags.Unit.Enemy.Boss);
+            tags.Remove(ProjectTags.Unit.Enemy.Boss);
+
+            return string.Join(""|"", changes);
+        }
+    }
+}");
+
+            AssertCompiles(outputCompilation);
+            Assert.Equal("Unit.Enemy.Boss:Added|Unit.Enemy.Boss:Removed", RunConsumerContract(outputCompilation));
+
+            INamedTypeSymbol change = outputCompilation.GetTypeByMetadataName("Consumer.TagSetChange");
+            Assert.All(change.GetMembers().OfType<IPropertySymbol>(), property => Assert.Null(property.SetMethod));
+        }
+
+        [Fact]
         public void GeneratedTagsRetainCanonicalHierarchyAndControlledConstruction()
         {
             Compilation outputCompilation = RunGenerator(@"

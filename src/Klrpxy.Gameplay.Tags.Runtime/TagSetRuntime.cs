@@ -3,9 +3,30 @@ using System.Collections.Generic;
 
 namespace Klrpxy.Gameplay.Tags.Runtime
 {
+    public enum TagSetChangeKind
+    {
+        Added,
+        Removed
+    }
+
+    public sealed class TagSetChange<TTag>
+    {
+        public TagSetChange(TTag tag, TagSetChangeKind kind)
+        {
+            Tag = tag;
+            Kind = kind;
+        }
+
+        public TTag Tag { get; }
+
+        public TagSetChangeKind Kind { get; }
+    }
+
     public sealed class TagSetRuntime<TTag>
     {
         private readonly HashSet<TTag> tags = new HashSet<TTag>();
+
+        public event Action<TagSetChange<TTag>> OnChanged;
 
         public bool Add(TTag tag)
         {
@@ -14,10 +35,25 @@ namespace Klrpxy.Gameplay.Tags.Runtime
                 throw new ArgumentNullException(nameof(tag));
             }
 
-            return tags.Add(tag);
+            if (!tags.Add(tag))
+            {
+                return false;
+            }
+
+            OnChanged?.Invoke(new TagSetChange<TTag>(tag, TagSetChangeKind.Added));
+            return true;
         }
 
-        public bool Remove(TTag tag) => tags.Remove(tag);
+        public bool Remove(TTag tag)
+        {
+            if (!tags.Remove(tag))
+            {
+                return false;
+            }
+
+            OnChanged?.Invoke(new TagSetChange<TTag>(tag, TagSetChangeKind.Removed));
+            return true;
+        }
 
         public bool HasExact(TTag tag) => tags.Contains(tag);
 
