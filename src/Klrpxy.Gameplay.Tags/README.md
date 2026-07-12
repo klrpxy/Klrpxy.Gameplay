@@ -17,13 +17,13 @@ Klrpxy Gameplay Tags turns a class-local Tag Table into type-safe, hierarchical 
    public static partial class Tags
    {
        private const string TagTable = @"Unit.Enemy.Boss
-Ability.Cast
-Ability.Channel
-State.Stunned";
+   Ability.Cast
+   Ability.Channel
+   State.Stunned";
    }
    ```
 
-5. After Unity finishes compiling, use the generated tags in your code:
+4. After Unity finishes compiling, use the generated tags in your code:
 
    ```csharp
    Tag boss = Tags.Unit.Enemy.Boss;

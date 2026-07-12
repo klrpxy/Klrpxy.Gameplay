@@ -17,13 +17,13 @@ Klrpxy Gameplay Tags 会把类内 Tag Table 生成 Unity 项目中类型安全�
    public static partial class Tags
    {
        private const string TagTable = @"Unit.Enemy.Boss
-Ability.Cast
-Ability.Channel
-State.Stunned";
+   Ability.Cast
+   Ability.Channel
+   State.Stunned";
    }
    ```
 
-5. 等待 Unity 编译完成后，即可在代码中使用生成的 Tag：
+4. 等待 Unity 编译完成后，即可在代码中使用生成的 Tag：
 
    ```csharp
    Tag boss = Tags.Unit.Enemy.Boss;
