@@ -52,6 +52,14 @@ namespace Klrpxy.Gameplay.Tags.Generator
             DiagnosticSeverity.Error,
             true);
 
+        private static readonly DiagnosticDescriptor LegacyExternalTagTable = new DiagnosticDescriptor(
+            "KTAG007",
+            "Legacy external Tag Table",
+            "The external GameplayTags.KlrpxyGameplayTags.additionalfile is no longer supported. Remove it and move its contents into the marked root's private const string TagTable field.",
+            "Klrpxy.Gameplay.Tags",
+            DiagnosticSeverity.Error,
+            true);
+
         private static readonly HashSet<string> ReservedSegments = new HashSet<string>(
             new[] { "Equals", "GetHashCode", "GetType", "ToString", "GetPath", "GetParent" },
             StringComparer.Ordinal);
@@ -111,6 +119,17 @@ namespace Klrpxy.Gameplay.Tags.Generator
 
             if (hasInvalidTagTable)
             {
+                return;
+            }
+
+            if (context.AdditionalFiles.Any(file => string.Equals(
+                System.IO.Path.GetFileName(file.Path),
+                "GameplayTags.KlrpxyGameplayTags.additionalfile",
+                StringComparison.Ordinal)))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                    LegacyExternalTagTable,
+                    FindOfficialMarker(context.Compilation, roots[0].Syntax).GetLocation()));
                 return;
             }
 

@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 if (-not $PackagePath)
 {
-    $PackagePath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Tags.0.1.0.unitypackage'
+    $PackagePath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Tags.0.2.0.unitypackage'
 }
 
 if (-not (Test-Path -LiteralPath $UnityPath -PathType Leaf))
@@ -32,7 +32,7 @@ function Write-HostProject([string]$Path)
     New-Item -ItemType Directory -Path (Join-Path $Path 'Assets') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $Path 'ProjectSettings') -Force | Out-Null
 
-    Copy-Item -LiteralPath $PackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Tags.0.1.0.unitypackage')
+    Copy-Item -LiteralPath $PackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage')
 
     @"
 m_EditorVersion: $UnityVersion
@@ -41,9 +41,8 @@ m_EditorVersionWithRevision: $UnityVersion
 
 }
 
-function Write-Consumer([string]$Path, [string]$Table, [string]$Source)
+function Write-Consumer([string]$Path, [string]$Source)
 {
-    Set-Content -LiteralPath (Join-Path $Path 'Assets\GameplayTags.KlrpxyGameplayTags.additionalfile') -Value $Table -Encoding utf8
     Set-Content -LiteralPath (Join-Path $Path 'Assets\Consumer.cs') -Value $Source -Encoding utf8
 }
 
@@ -69,7 +68,7 @@ function Import-UnityPackage([string]$Path, [string]$LogPath)
 {
     $process = Start-Process -FilePath $UnityPath -WorkingDirectory $Path -Wait -PassThru -ArgumentList @(
         '-batchmode', '-nographics', '-quit', '-projectPath', '.', '-importPackage',
-        'Klrpxy.Gameplay.Tags.0.1.0.unitypackage', '-logFile', 'Import.log')
+        'Klrpxy.Gameplay.Tags.0.2.0.unitypackage', '-logFile', 'Import.log')
     if ($process.ExitCode -ne 0)
     {
         throw "Unity failed to import the package. See $LogPath"
@@ -81,7 +80,7 @@ try
     $validHost = Join-Path $hostRoot 'valid'
     Write-HostProject $validHost
     Import-UnityPackage $validHost (Join-Path $validHost 'Import.log')
-    Write-Consumer $validHost "Unit.Enemy.Boss`nAbility.Cast`n" @'
+    Write-Consumer $validHost @'
 using Klrpxy.Gameplay.Tags;
 using UnityEditor;
 using UnityEngine;
@@ -91,6 +90,8 @@ namespace Consumer
     [GenerateGameplayTags]
     public static partial class ProjectTags
     {
+        private const string TagTable = @"Unit.Enemy.Boss
+Ability.Cast";
     }
 
     [InitializeOnLoad]
@@ -122,7 +123,7 @@ namespace Consumer
     $invalidHost = Join-Path $hostRoot 'invalid'
     Write-HostProject $invalidHost
     Import-UnityPackage $invalidHost (Join-Path $invalidHost 'Import.log')
-    Write-Consumer $invalidHost "Unit`nUnit.invalid-name`n" @'
+    Write-Consumer $invalidHost @'
 using Klrpxy.Gameplay.Tags;
 
 namespace Consumer
@@ -130,17 +131,17 @@ namespace Consumer
     [GenerateGameplayTags]
     public static partial class ProjectTags
     {
+        private const string TagTable = @"Unit
+Unit.invalid-name";
     }
 }
 '@
     $invalidLog = Join-Path $invalidHost 'Editor.log'
     $invalidOutput = Invoke-UnityHost $invalidHost $invalidLog
     $hasInvalidDiagnostic = $invalidOutput -match 'KTAG003'
-    $hasAdditionalFile = $invalidOutput -match 'GameplayTags\.KlrpxyGameplayTags\.additionalfile'
-    $hasSecondLine = $invalidOutput -match '\(2,'
-    if (-not ($hasInvalidDiagnostic -and $hasAdditionalFile -and $hasSecondLine))
+    if (-not $hasInvalidDiagnostic)
     {
-        throw "The invalid Tag Table diagnostic did not retain KTAG003 and line 2. See $invalidLog"
+        throw "The invalid TagTable diagnostic did not retain KTAG003. See $invalidLog"
     }
 
     Write-Output "KLRPXY_UNITY_SMOKE_PASS unity=$UnityVersion temp=$hostRoot"

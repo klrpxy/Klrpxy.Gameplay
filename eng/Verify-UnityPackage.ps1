@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$PackagePath = 'artifacts/Klrpxy.Gameplay.Tags.0.1.0.unitypackage'
+    [string]$PackagePath = 'artifacts/Klrpxy.Gameplay.Tags.0.2.0.unitypackage'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,6 +18,47 @@ if ([System.IO.Path]::GetExtension($PackagePath) -ne '.unitypackage')
 if ((Get-Item -LiteralPath $PackagePath).Length -eq 0)
 {
     throw "Unity package is empty: $PackagePath"
+}
+
+$extractRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("KlrpxyGameplayTagsVerify-" + [Guid]::NewGuid().ToString('N'))
+try
+{
+    New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
+    tar -xzf $PackagePath -C $extractRoot
+    if ($LASTEXITCODE -ne 0)
+    {
+        throw "Unity package could not be inspected: $PackagePath"
+    }
+
+    $packageAssets = @(Get-ChildItem -LiteralPath $extractRoot -Recurse -Filter pathname | ForEach-Object {
+        [PSCustomObject]@{
+            Path = (Get-Content -Raw -LiteralPath $_.FullName).Trim()
+            Meta = Get-Content -Raw -LiteralPath (Join-Path $_.DirectoryName 'asset.meta')
+        }
+    })
+    $analyzer = @($packageAssets | Where-Object { $_.Path -eq 'Assets/KlrpxyGameplayTags/KlrpxyGameplayTags.dll' })
+    $runtime = @($packageAssets | Where-Object { $_.Path -eq 'Assets/KlrpxyGameplayTags/KlrpxyGameplayTags.Runtime.dll' })
+    if ($analyzer.Count -ne 1 -or $runtime.Count -ne 1)
+    {
+        throw 'Unity package must contain exactly one analyzer DLL and one runtime DLL.'
+    }
+
+    if (($analyzer[0].Meta -notmatch '(?m)^- RoslynAnalyzer$') -or ($analyzer[0].Meta -notmatch '(?s)Any:\s*second:\s*enabled: 0'))
+    {
+        throw 'The analyzer DLL must be labelled RoslynAnalyzer with runtime platforms disabled.'
+    }
+
+    if (($runtime[0].Meta -match 'RoslynAnalyzer') -or ($runtime[0].Meta -notmatch '(?s)Any:\s*second:\s*enabled: 1'))
+    {
+        throw 'The runtime DLL must not be a RoslynAnalyzer and must have runtime platforms enabled.'
+    }
+}
+finally
+{
+    if (Test-Path -LiteralPath $extractRoot)
+    {
+        Remove-Item -LiteralPath $extractRoot -Recurse -Force
+    }
 }
 
 Write-Output "KLRPXY_PACKAGE_VERIFY_PASS path=$PackagePath"
