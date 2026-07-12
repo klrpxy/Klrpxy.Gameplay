@@ -10,19 +10,19 @@ Klrpxy Gameplay Tags 会把类内 Tag Table 生成 Unity 项目中类型安全�
 2. 在 Unity 中选择 **Assets > Import Package > Custom Package**，导入下载的文件。
 3. 在将要使用这些 Tag 的脚本所在的同一个 Unity 程序集中，新建一个脚本。如果项目没有使用程序集定义文件（`.asmdef`），所有脚本默认都满足这项要求。在带标记的根类中声明项目唯一的 **Tag Table**：
 
-```csharp
-using Klrpxy.Gameplay.Tags;
-
-[GenerateGameplayTags]
-public static partial class Tags {
-    private const string TagTable =@"
-        Unit.Enemy.Boss
-        Ability.Cast
-        Ability.Channel
-        State.Stunned
-    ";
-}
-```
+    ```csharp
+    using Klrpxy.Gameplay.Tags;
+    
+    [GenerateGameplayTags]
+    public static partial class Tags {
+        private const string TagTable =@"
+            Unit.Enemy.Boss
+            Ability.Cast
+            Ability.Channel
+            State.Stunned
+        ";
+    }
+    ```
 
 4. 等待 Unity 编译完成后，即可在代码中使用生成的 Tag：
 
