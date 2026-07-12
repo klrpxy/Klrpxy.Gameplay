@@ -50,6 +50,52 @@ Ability.Attack"";
         }
 
         [Fact]
+        public void MultipleRootsInDifferentNamespacesShareOneGeneratedTagUniverse()
+        {
+            Compilation outputCompilation = RunGenerator(@"
+using Klrpxy.Gameplay.Tags;
+using Consumer.Combat;
+
+namespace Consumer.Combat
+{
+    [GenerateGameplayTags]
+    public static partial class Tags
+    {
+        private const string TagTable = ""Unit.Enemy.Boss"";
+    }
+
+}
+
+namespace Consumer.Interface
+{
+    [GenerateGameplayTags]
+    public static partial class Tags
+    {
+        private const string TagTable = ""Hud.Menu"";
+    }
+}
+
+namespace Consumer
+{
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var tags = new TagSet();
+            tags.Add(Tags.Unit.Enemy.Boss);
+            tags.Add(global::Consumer.Interface.Tags.Hud.Menu);
+            return TagQuery.All(
+                TagQuery.Has(Tags.Unit),
+                TagQuery.Has(global::Consumer.Interface.Tags.Hud)).Matches(tags);
+        }
+    }
+}");
+
+            AssertCompiles(outputCompilation);
+            Assert.Equal(true, RunConsumerContract(outputCompilation));
+        }
+
+        [Fact]
         public void GeneratedGameplayInterfacePreservesTagSetMutationSemantics()
         {
             Compilation outputCompilation = RunGenerator(@"
@@ -236,6 +282,27 @@ public static partial class ProjectTags { public const string TagTable = ""Unit"
         }
 
         [Fact]
+        public void EveryRootMustDeclareExactlyOnePrivateConstStringTagTable()
+        {
+            GenerationResult result = RunGeneratorWithDiagnostics(@"
+using Klrpxy.Gameplay.Tags;
+[GenerateGameplayTags]
+public static partial class Missing { }
+[GenerateGameplayTags]
+public static partial class Wrong { internal const string TagTable = ""Unit""; }
+[GenerateGameplayTags]
+public static partial class Duplicate
+{
+    private const string TagTable = ""Unit"";
+    private const string TagTable = ""Ability"";
+}");
+
+            Assert.Equal(
+                new[] { "KTAG006", "KTAG006", "KTAG006" },
+                result.Diagnostics.Select(diagnostic => diagnostic.Id));
+        }
+
+        [Fact]
         public void InvalidTagTablePathsAreReportedWhileBlankLinesAndCommentsAreIgnored()
         {
             GenerationResult result = RunGeneratorWithDiagnostics(@"
@@ -255,21 +322,37 @@ Unit.Enemy
         }
 
         [Fact]
-        public void InvalidRootAndMultipleRootsAreRejected()
+        public void InvalidRootsAndDuplicatePathsAcrossRootsAreRejected()
         {
             GenerationResult invalid = RunGeneratorWithDiagnostics(@"
 using Klrpxy.Gameplay.Tags;
 [GenerateGameplayTags]
 internal static partial class ProjectTags { private const string TagTable = ""Unit""; }");
-            GenerationResult multiple = RunGeneratorWithDiagnostics(@"
+            GenerationResult duplicate = RunGeneratorWithDiagnostics(@"
 using Klrpxy.Gameplay.Tags;
 [GenerateGameplayTags]
-public static partial class First { private const string TagTable = ""Unit""; }
+public static partial class First { private const string TagTable = ""Unit.Enemy""; }
 [GenerateGameplayTags]
-public static partial class Second { private const string TagTable = ""Ability""; }");
+public static partial class Second { private const string TagTable = ""Unit.Enemy""; }");
 
             Assert.Equal("KTAG001", Assert.Single(invalid.Diagnostics).Id);
-            Assert.Equal("KTAG002", Assert.Single(multiple.Diagnostics).Id);
+            Diagnostic duplicateDiagnostic = Assert.Single(duplicate.Diagnostics);
+            Assert.Equal("KTAG004", duplicateDiagnostic.Id);
+            Assert.Contains("Unit.Enemy", duplicateDiagnostic.GetMessage());
+        }
+
+        [Fact]
+        public void PathsImplicitlyDeclaredByAnotherRootAreRejected()
+        {
+            GenerationResult result = RunGeneratorWithDiagnostics(@"
+using Klrpxy.Gameplay.Tags;
+[GenerateGameplayTags]
+public static partial class First { private const string TagTable = ""Unit.Enemy.Boss""; }
+[GenerateGameplayTags]
+public static partial class Second { private const string TagTable = ""Unit.Enemy""; }");
+
+            Assert.Contains(result.Diagnostics, diagnostic =>
+                diagnostic.Id == "KTAG004" && diagnostic.GetMessage().Contains("Unit.Enemy"));
         }
 
         private static object RunConsumerContract(Compilation compilation)
