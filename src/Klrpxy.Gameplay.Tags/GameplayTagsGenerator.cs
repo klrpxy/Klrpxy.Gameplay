@@ -20,14 +20,6 @@ namespace Klrpxy.Gameplay.Tags.Generator
             DiagnosticSeverity.Error,
             true);
 
-        private static readonly DiagnosticDescriptor MultipleMarkerRoots = new DiagnosticDescriptor(
-            "KTAG002",
-            "Multiple GenerateGameplayTags roots",
-            "Exactly one static partial class can be marked with GenerateGameplayTags; found {0}.",
-            "Klrpxy.Gameplay.Tags",
-            DiagnosticSeverity.Error,
-            true);
-
         private static readonly DiagnosticDescriptor InvalidPath = new DiagnosticDescriptor(
             "KTAG003",
             "Invalid Tag path",
@@ -38,8 +30,8 @@ namespace Klrpxy.Gameplay.Tags.Generator
 
         private static readonly DiagnosticDescriptor DuplicateExplicitDeclaration = new DiagnosticDescriptor(
             "KTAG004",
-            "Duplicate explicit Tag declaration",
-            "Tag path '{0}' is explicitly declared more than once.",
+            "Duplicate Tag declaration",
+            "Tag path '{0}' is declared more than once.",
             "Klrpxy.Gameplay.Tags",
             DiagnosticSeverity.Error,
             true);
@@ -82,49 +74,106 @@ namespace Klrpxy.Gameplay.Tags.Generator
                 return;
             }
 
-            ClassDeclarationSyntax invalidRoot = markedRoots.FirstOrDefault(candidate => !IsValidRoot(candidate));
+            List<RootDefinition> roots = markedRoots
+                .Select(candidate => new RootDefinition(
+                    candidate,
+                    context.Compilation.GetSemanticModel(candidate.SyntaxTree).GetDeclaredSymbol(candidate)))
+                .GroupBy(root => root.Symbol, SymbolEqualityComparer.Default)
+                .Select(group => group.First())
+                .ToList();
+
+            RootDefinition invalidRoot = roots.FirstOrDefault(root => !IsValidRoot(root.Syntax));
             if (invalidRoot != null)
             {
                 context.ReportDiagnostic(Diagnostic.Create(
                     InvalidMarkerTarget,
-                    FindOfficialMarker(context.Compilation, invalidRoot).GetLocation()));
+                    FindOfficialMarker(context.Compilation, invalidRoot.Syntax).GetLocation()));
                 return;
             }
 
-            if (markedRoots.Count > 1)
+            bool hasInvalidTagTable = false;
+            foreach (RootDefinition root in roots)
             {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    MultipleMarkerRoots,
-                    FindOfficialMarker(context.Compilation, markedRoots[1]).GetLocation(),
-                    markedRoots.Count));
+                IFieldSymbol[] tagTableFields = root.Symbol.GetMembers("TagTable")
+                    .OfType<IFieldSymbol>()
+                    .ToArray();
+                if (tagTableFields.Length != 1 || !IsTagTable(tagTableFields[0]))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        InvalidTagTable,
+                        FindOfficialMarker(context.Compilation, root.Syntax).GetLocation()));
+                    hasInvalidTagTable = true;
+                    continue;
+                }
+
+                root.TagTable = tagTableFields[0];
+            }
+
+            if (hasInvalidTagTable)
+            {
                 return;
             }
 
-            ClassDeclarationSyntax root = markedRoots[0];
-            INamedTypeSymbol rootSymbol = context.Compilation.GetSemanticModel(root.SyntaxTree)
-                .GetDeclaredSymbol(root);
-            IFieldSymbol[] tagTableFields = rootSymbol.GetMembers("TagTable")
-                .OfType<IFieldSymbol>()
+            var explicitlyDeclared = new HashSet<string>(StringComparer.Ordinal);
+            bool hasInvalidPath = false;
+            foreach (RootDefinition root in roots)
+            {
+                root.Paths = ParsePaths(
+                    context,
+                    root.TagTable.Locations[0],
+                    root.TagTable.ConstantValue as string ?? string.Empty,
+                    explicitlyDeclared);
+                hasInvalidPath |= root.Paths == null;
+            }
+
+            if (hasInvalidPath)
+            {
+                return;
+            }
+
+            var pathOwners = new Dictionary<string, RootDefinition>(StringComparer.Ordinal);
+            foreach (RootDefinition root in roots)
+            {
+                foreach (string[] path in root.Paths)
+                {
+                    string value = string.Join(".", path);
+                    if (pathOwners.ContainsKey(value))
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            DuplicateExplicitDeclaration,
+                            root.TagTable.Locations[0],
+                            value));
+                        hasInvalidPath = true;
+                        continue;
+                    }
+
+                    pathOwners.Add(value, root);
+                }
+            }
+
+            if (hasInvalidPath)
+            {
+                return;
+            }
+
+            IReadOnlyList<string[]> paths = roots.SelectMany(root => root.Paths)
+                .GroupBy(path => string.Join(".", path), StringComparer.Ordinal)
+                .Select(group => group.First())
                 .ToArray();
-            if (tagTableFields.Length != 1 || !IsTagTable(tagTableFields[0]))
+            RootDefinition universeRoot = roots[0];
+            string tagNamespace = GetNamespace(universeRoot.Syntax);
+
+            for (int index = 0; index < roots.Count; index++)
             {
-                context.ReportDiagnostic(Diagnostic.Create(
-                    InvalidTagTable,
-                    FindOfficialMarker(context.Compilation, root).GetLocation()));
-                return;
+                RootDefinition root = roots[index];
+                context.AddSource(
+                    "GameplayTags.Root" + index + ".g.cs",
+                    SourceText.From(GenerateRoot(root.Syntax, root.Paths, tagNamespace), Encoding.UTF8));
             }
 
-            IFieldSymbol tagTable = tagTableFields[0];
-            IReadOnlyList<string[]> paths = ParsePaths(
-                context,
-                tagTable.Locations[0],
-                tagTable.ConstantValue as string ?? string.Empty);
-            if (paths != null)
-            {
-                context.AddSource(
-                    "GameplayTags.g.cs",
-                    SourceText.From(GenerateHierarchy(root, paths), Encoding.UTF8));
-            }
+            context.AddSource(
+                "GameplayTags.Universe.g.cs",
+                SourceText.From(GenerateUniverse(universeRoot.Syntax, paths), Encoding.UTF8));
         }
 
         private const string AttributeSource = @"// <auto-generated />
@@ -268,11 +317,11 @@ namespace Klrpxy.Gameplay.Tags
         private static IReadOnlyList<string[]> ParsePaths(
             GeneratorExecutionContext context,
             Location location,
-            string table)
+            string table,
+            ISet<string> explicitlyDeclared)
         {
             var paths = new List<string[]>();
             var seen = new HashSet<string>(StringComparer.Ordinal);
-            var explicitlyDeclared = new HashSet<string>(StringComparer.Ordinal);
             bool hasErrors = false;
 
             foreach (string rawLine in table.Replace("\r\n", "\n").Split('\n'))
@@ -341,9 +390,15 @@ namespace Klrpxy.Gameplay.Tags
             return true;
         }
 
-        private static string GenerateHierarchy(ClassDeclarationSyntax root, IReadOnlyList<string[]> paths)
+        private static string GenerateRoot(
+            ClassDeclarationSyntax root,
+            IReadOnlyList<string[]> paths,
+            string tagNamespace)
         {
             string namespaceName = GetNamespace(root);
+            string tagTypeName = tagNamespace.Length == 0
+                ? "global::Tag"
+                : "global::" + tagNamespace + ".Tag";
             var source = new StringBuilder();
 
             source.AppendLine("// <auto-generated />");
@@ -359,11 +414,33 @@ namespace Klrpxy.Gameplay.Tags
             source.Append(indent).AppendLine("{");
             foreach (string[] path in paths.Where(path => path.Length == 1))
             {
-                source.Append(indent).Append("    public static Tag ").Append(path[0])
-                    .Append(" => Tag.").Append(GetFieldName(path)).AppendLine(";");
+                source.Append(indent).Append("    public static ").Append(tagTypeName).Append(" ")
+                    .Append(path[0]).Append(" => ").Append(tagTypeName).Append(".")
+                    .Append(GetFieldName(path)).AppendLine(";");
             }
 
             source.Append(indent).AppendLine("}");
+            if (namespaceName.Length > 0)
+            {
+                source.AppendLine("}");
+            }
+
+            return source.ToString();
+        }
+
+        private static string GenerateUniverse(ClassDeclarationSyntax root, IReadOnlyList<string[]> paths)
+        {
+            string namespaceName = GetNamespace(root);
+            var source = new StringBuilder();
+
+            source.AppendLine("// <auto-generated />");
+            if (namespaceName.Length > 0)
+            {
+                source.Append("namespace ").Append(namespaceName).AppendLine();
+                source.AppendLine("{");
+            }
+
+            string indent = namespaceName.Length > 0 ? "    " : string.Empty;
             source.AppendLine();
             AppendTag(source, indent, paths);
             source.AppendLine();
@@ -535,6 +612,23 @@ namespace Klrpxy.Gameplay.Tags
                     Roots.Add(declaration);
                 }
             }
+        }
+
+        private sealed class RootDefinition
+        {
+            public RootDefinition(ClassDeclarationSyntax syntax, INamedTypeSymbol symbol)
+            {
+                Syntax = syntax;
+                Symbol = symbol;
+            }
+
+            public ClassDeclarationSyntax Syntax { get; }
+
+            public INamedTypeSymbol Symbol { get; }
+
+            public IFieldSymbol TagTable { get; set; }
+
+            public IReadOnlyList<string[]> Paths { get; set; }
         }
     }
 }
