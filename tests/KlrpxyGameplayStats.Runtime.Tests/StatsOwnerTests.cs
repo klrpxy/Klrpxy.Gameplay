@@ -9,6 +9,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         [Fact]
         public void OwnerBindsProvidedStatSet()
         {
+            // 验证创建 StatsOwner 时会把传入的 StatSet 绑定到该 Owner。
             var statSet = new TestStatSet();
 
             var owner = new TestOwner(statSet);
@@ -19,6 +20,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         [Fact]
         public void StatSetCannotBeBoundToSecondOwner()
         {
+            // 验证已绑定的 StatSet 不能再次交给另一个 StatsOwner。
             var statSet = new TestStatSet();
             _ = new TestOwner(statSet);
 
@@ -28,6 +30,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         [Fact]
         public void OwnerRejectsMissingStatSet()
         {
+            // 验证创建 StatsOwner 时必须提供非空 StatSet。
             Assert.Throws<ArgumentNullException>(() => new TestOwner(null));
         }
 

@@ -20,6 +20,7 @@ namespace KlrpxyGameplayStats.Tests
         [Fact]
         public void GeneratedStatKeyGetsDeclaredStatFromOwnersStatSet()
         {
+            // 验证生成的 StatKey 能从 Owner 的实际 StatSet 取得声明的 Stat。
             Compilation compilation = RunGenerator(@"
 using Klrpxy.Gameplay.Stats;
 
@@ -54,6 +55,7 @@ namespace Consumer
         [Fact]
         public void GeneratedStatKeyRejectsIncompatibleStatSet()
         {
+            // 验证生成的 StatKey 不会接受类型不兼容的 StatSet。
             Compilation compilation = RunGenerator(@"
 using Klrpxy.Gameplay.Stats;
 
@@ -86,6 +88,7 @@ namespace Consumer
         [Fact]
         public void GeneratedMemberDescriptionsIncludeAllDeclaredValueKinds()
         {
+            // 验证生成的成员描述同时包含 Stat、RangeStat 和 Resource。
             Compilation compilation = RunGenerator(@"
 using System.Collections.Generic;
 using System.Linq;
@@ -122,6 +125,7 @@ namespace Consumer
         [Fact]
         public void MultiFilePartialStatSetGeneratesOnce()
         {
+            // 验证分散在多个声明中的 partial StatSet 只生成一份代码。
             Compilation compilation = RunGenerator(@"
 using Klrpxy.Gameplay.Stats;
 
@@ -153,6 +157,7 @@ namespace Consumer
         [Fact]
         public void KeywordStatSetAndMemberNamesGenerateValidSource()
         {
+            // 验证使用 C# 关键字命名的 StatSet 和成员仍能生成有效源码。
             Compilation compilation = RunGenerator(@"
 using Klrpxy.Gameplay.Stats;
 
@@ -180,6 +185,7 @@ namespace Consumer
         [Fact]
         public void StatSetsWithCollidingDisplayNamesUseDistinctGeneratedFiles()
         {
+            // 验证显示名称碰撞的不同 StatSet 会使用互不冲突的生成文件名。
             Compilation compilation = RunGenerator(@"
 using Klrpxy.Gameplay.Stats;
 
