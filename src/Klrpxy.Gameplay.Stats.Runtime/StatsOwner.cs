@@ -1,9 +1,11 @@
 using System;
+using System.Threading;
 
 namespace Klrpxy.Gameplay.Stats
 {
     public abstract class StatsOwner
     {
+        private static long nextModifierOrder;
         protected StatsOwner(StatSet statSet)
         {
             if (statSet == null)
@@ -16,6 +18,33 @@ namespace Klrpxy.Gameplay.Stats
         }
 
         public StatSet StatSet { get; }
+
+        public ModifierHandle AddModifier(Modifier modifier, ModifierSource source)
+        {
+            if (modifier == null)
+            {
+                throw new ArgumentNullException(nameof(modifier));
+            }
+
+            if (source == null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            source.ThrowIfDisposed();
+            long order = Interlocked.Increment(ref nextModifierOrder);
+            if (modifier.Target is StatKey<Stat> statKey && statKey.TryGet(StatSet, out Stat stat))
+            {
+                return stat.AddModifier(modifier, source, order);
+            }
+
+            if (modifier.Target is StatKey<RangeStat> rangeKey && rangeKey.TryGet(StatSet, out RangeStat rangeStat))
+            {
+                return rangeStat.AddModifier(modifier, source, order);
+            }
+
+            throw new InvalidOperationException("The Modifier target is not declared by this StatsOwner.");
+        }
     }
 
     public abstract class StatsOwner<TStatSet> : StatsOwner
