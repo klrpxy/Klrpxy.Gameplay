@@ -164,6 +164,241 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             Assert.Equal(new[] { (130f, 100f) }, changes);
         }
 
+        [Fact]
+        public void DynamicModifierRecalculatesWhenDeclaredInputChanges()
+        {
+            // 验证动态 Modifier 会在显式 ValueInput 变化时自动更新目标 FinalValue。
+            var owner = new TestOwner(new TestStatSet());
+            var source = new ModifierSource();
+            var bonus = new Stat(10f);
+            ModifierValue value = ModifierValue.From(ValueInput.Final(bonus), input => input * 2f);
+
+            owner.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
+            bonus.BaseValue = 20f;
+
+            Assert.Equal(140f, owner.StatSet.Health.FinalValue);
+        }
+
+        [Fact]
+        public void DynamicModifierCycleIsRejectedBeforeTargetChanges()
+        {
+            // 验证会形成 FinalValue 环的动态 Modifier 在改变注册和值前被原子拒绝。
+            var first = new TestOwner(new TestStatSet());
+            var second = new TestOwner(new TestStatSet());
+            var source = new ModifierSource();
+            first.AddModifier(
+                Modifier.Flat(
+                    ModifierValue.From(ValueInput.Final(second.StatSet.Health), value => value),
+                    TestStatSet.HealthKey),
+                source);
+
+            Assert.Throws<InvalidOperationException>(() => second.AddModifier(
+                Modifier.Flat(
+                    ModifierValue.From(ValueInput.Final(first.StatSet.Health), value => value),
+                    TestStatSet.HealthKey),
+                source));
+
+            Assert.Equal(200f, first.StatSet.Health.FinalValue);
+            Assert.Equal(100f, second.StatSet.Health.FinalValue);
+        }
+
+        [Fact]
+        public void DynamicModifierCombinesThreeDeclaredInputsIncludingExternalValue()
+        {
+            // 验证动态 Modifier 可组合三个显式输入，并响应外部可观察值变化。
+            var owner = new TestOwner(new TestStatSet());
+            var source = new ModifierSource();
+            var first = new Stat(10f);
+            var second = new Resource(5f);
+            var external = new ObservableValue(2f);
+            ModifierValue value = ModifierValue.From(
+                ValueInput.Final(first),
+                ValueInput.Current(second),
+                ValueInput.External(external),
+                (a, b, c) => a + b + c);
+            owner.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
+
+            external.Value = 10f;
+
+            Assert.Equal(125f, owner.StatSet.Health.FinalValue);
+        }
+
+        [Fact]
+        public void DynamicModifierCanReadFinalRangeInput()
+        {
+            // 验证动态 Modifier 可以读取 RangeStat 的完整 FinalRange。
+            var owner = new TestOwner(new TestStatSet());
+            var source = new ModifierSource();
+            var range = new RangeStat(10f, 25f);
+            ModifierValue value = ModifierValue.From(
+                ValueInput.Final(range),
+                current => current.Max - current.Min);
+
+            owner.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
+
+            Assert.Equal(115f, owner.StatSet.Health.FinalValue);
+        }
+
+        [Fact]
+        public void DynamicModifierCombinesRangeAndScalarInputs()
+        {
+            // 验证 Range Final 可以与其他显式输入组合成动态 ModifierValue。
+            var owner = new TestOwner(new TestStatSet());
+            var source = new ModifierSource();
+            var range = new RangeStat(10f, 25f);
+            var bonus = new ObservableValue(5f);
+            ModifierValue value = ModifierValue.From(
+                ValueInput.Final(range),
+                ValueInput.External(bonus),
+                (current, extra) => current.Max - current.Min + extra);
+
+            owner.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
+            bonus.Value = 10f;
+
+            Assert.Equal(125f, owner.StatSet.Health.FinalValue);
+        }
+
+        [Fact]
+        public async System.Threading.Tasks.Task MutationFromAnotherGameplayThreadFailsImmediately()
+        {
+            // 验证从非创建 Gameplay 线程修改 Stat 会立即失败。
+            var stat = new Stat(100f);
+
+            Exception exception = await System.Threading.Tasks.Task.Run(() =>
+            {
+                try { stat.BaseValue = 50f; return null; }
+                catch (Exception caught) { return caught; }
+            });
+
+            Assert.IsType<InvalidOperationException>(exception);
+            Assert.Equal(100f, stat.FinalValue);
+        }
+
+        [Fact]
+        public void DiamondDependencyPublishesOneRoundStartToFinalEvent()
+        {
+            // 验证菱形依赖导致目标多次重算时，同轮只发布一次开始值到最终值事件。
+            var input = new Stat(10f);
+            var left = new TestOwner(new TestStatSet());
+            var right = new TestOwner(new TestStatSet());
+            var target = new TestOwner(new TestStatSet());
+            var source = new ModifierSource();
+            left.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
+            right.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
+            target.AddModifier(
+                Modifier.Flat(
+                    ModifierValue.From(
+                        ValueInput.Final(left.StatSet.Health),
+                        ValueInput.Final(right.StatSet.Health),
+                        (a, b) => a + b),
+                    TestStatSet.HealthKey),
+                source);
+            var changes = new System.Collections.Generic.List<(float Previous, float Current)>();
+            target.StatSet.Health.OnFinalValueChanged += (previous, current) => changes.Add((previous, current));
+
+            input.BaseValue = 20f;
+
+            Assert.Equal(new[] { (320f, 340f) }, changes);
+        }
+
+        [Fact]
+        public void DiamondDependencyReturningToRoundStartPublishesNoEvent()
+        {
+            // 验证节点在同轮传播结束时回到开始值不会发布变化事件。
+            var input = new Stat(10f);
+            var left = new TestOwner(new TestStatSet());
+            var right = new TestOwner(new TestStatSet());
+            var target = new TestOwner(new TestStatSet());
+            var source = new ModifierSource();
+            left.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
+            right.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
+            target.AddModifier(
+                Modifier.Flat(
+                    ModifierValue.From(
+                        ValueInput.Final(left.StatSet.Health),
+                        ValueInput.Final(right.StatSet.Health),
+                        (a, b) => a - b),
+                    TestStatSet.HealthKey),
+                source);
+            var eventCount = 0;
+            target.StatSet.Health.OnFinalValueChanged += (previous, current) => eventCount++;
+
+            input.BaseValue = 20f;
+
+            Assert.Equal(0, eventCount);
+            Assert.Equal(100f, target.StatSet.Health.FinalValue);
+        }
+
+        [Fact]
+        public void ExternalInputChangePublishesAfterEntireGraphRecalculates()
+        {
+            // 验证外部可观察输入的一次修改只开启一轮传播并公开最终值。
+            var input = new ObservableValue(10f);
+            var left = new TestOwner(new TestStatSet());
+            var right = new TestOwner(new TestStatSet());
+            var target = new TestOwner(new TestStatSet());
+            var source = new ModifierSource();
+            left.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.External(input), value => value), TestStatSet.HealthKey), source);
+            right.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.External(input), value => value), TestStatSet.HealthKey), source);
+            target.AddModifier(
+                Modifier.Flat(
+                    ModifierValue.From(
+                        ValueInput.Final(left.StatSet.Health),
+                        ValueInput.Final(right.StatSet.Health),
+                        (a, b) => a + b),
+                    TestStatSet.HealthKey),
+                source);
+            var changes = new System.Collections.Generic.List<(float Previous, float Current)>();
+            target.StatSet.Health.OnFinalValueChanged += (previous, current) => changes.Add((previous, current));
+
+            input.Value = 20f;
+
+            Assert.Equal(new[] { (320f, 340f) }, changes);
+        }
+
+        [Fact]
+        public void DynamicStatBoundsTrackDeclaredInputsAndRejectSelfCycle()
+        {
+            // 验证 Stat 动态边界自动传播，并在绑定前拒绝依赖自身 FinalValue 的环。
+            var maximum = new Stat(100f);
+            var minimum = new ObservableValue(0f);
+            var stat = new Stat(150f).WithBounds(ValueInput.External(minimum), ValueInput.Final(maximum));
+
+            maximum.BaseValue = 80f;
+
+            Assert.Equal(80f, stat.FinalValue);
+            var unbounded = new Stat(100f);
+            Assert.Throws<InvalidOperationException>(() =>
+                unbounded.WithBounds(ValueInput.External(minimum), ValueInput.Final(unbounded)));
+            unbounded.BaseValue = 200f;
+            Assert.Equal(200f, unbounded.FinalValue);
+        }
+
+        [Fact]
+        public void RemovingDynamicModifierUnsubscribesInputAndDependencyEdge()
+        {
+            // 验证移除动态 Modifier 后取消输入订阅并从依赖图删除关系。
+            var first = new TestOwner(new TestStatSet());
+            var second = new TestOwner(new TestStatSet());
+            var source = new ModifierSource();
+            ModifierHandle handle = first.AddModifier(
+                Modifier.Flat(
+                    ModifierValue.From(ValueInput.Final(second.StatSet.Health), value => value),
+                    TestStatSet.HealthKey),
+                source);
+
+            handle.Dispose();
+            second.AddModifier(
+                Modifier.Flat(
+                    ModifierValue.From(ValueInput.Final(first.StatSet.Health), value => value),
+                    TestStatSet.HealthKey),
+                source);
+            first.StatSet.Health.BaseValue = 120f;
+
+            Assert.Equal(120f, first.StatSet.Health.FinalValue);
+            Assert.Equal(220f, second.StatSet.Health.FinalValue);
+        }
+
     }
 
     public sealed partial class TestStatSet : StatSet

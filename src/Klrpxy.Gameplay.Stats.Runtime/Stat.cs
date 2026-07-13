@@ -12,6 +12,12 @@ namespace Klrpxy.Gameplay.Stats
         private readonly RoundingMode rounding;
         private FloatRange? bounds;
         private float finalValue;
+        private readonly GameplayThreadGuard threadGuard = new GameplayThreadGuard();
+        private ValueInput<float> minimumInput;
+        private ValueInput<float> maximumInput;
+        private IDisposable minimumSubscription;
+        private IDisposable maximumSubscription;
+        private IDisposable boundsDependency;
 
         public Stat(float baseValue, RoundingMode rounding = RoundingMode.None)
         {
@@ -24,14 +30,16 @@ namespace Klrpxy.Gameplay.Stats
             get => baseValue;
             set
             {
-                Modifier.ValidateFinite(value, nameof(value));
-                if (baseValue == value)
+                StatsPropagationCoordinator.Execute(() =>
                 {
-                    return;
-                }
-
-                baseValue = value;
-                Recalculate();
+                    threadGuard.Verify();
+                    Modifier.ValidateFinite(value, nameof(value));
+                    if (baseValue == value) return;
+                    float previous = baseValue;
+                    baseValue = value;
+                    RecalculateCore();
+                    OnBaseValueChanged?.Invoke(previous, value);
+                });
             }
         }
 
@@ -39,8 +47,13 @@ namespace Klrpxy.Gameplay.Stats
 
         public event Action<float, float> OnFinalValueChanged;
 
+        internal event Action<float, float> OnBaseValueChanged;
+
+        internal event Action FinalValueChanged;
+
         public Stat WithBounds(float minimum, float maximum)
         {
+            threadGuard.Verify();
             Modifier.ValidateFinite(minimum, nameof(minimum));
             Modifier.ValidateFinite(maximum, nameof(maximum));
             if (minimum > maximum)
@@ -60,14 +73,66 @@ namespace Klrpxy.Gameplay.Stats
             return this;
         }
 
+        public Stat WithBounds(ValueInput<float> minimum, ValueInput<float> maximum)
+        {
+            threadGuard.Verify();
+            if (minimum == null) throw new ArgumentNullException(nameof(minimum));
+            if (maximum == null) throw new ArgumentNullException(nameof(maximum));
+            FloatRange initialBounds = CreateBounds(minimum.Read(), maximum.Read());
+            boundsDependency = StatsPropagationCoordinator.AddDependencies(GetDependencyNodes(minimum, maximum), this);
+            try
+            {
+                minimumInput = minimum;
+                maximumInput = maximum;
+                bounds = initialBounds;
+                minimumSubscription = minimum.Subscribe(UpdateDynamicBounds);
+                maximumSubscription = maximum.Subscribe(UpdateDynamicBounds);
+                Recalculate();
+                return this;
+            }
+            catch
+            {
+                boundsDependency.Dispose();
+                boundsDependency = null;
+                throw;
+            }
+        }
+
+        private void UpdateDynamicBounds()
+        {
+            bounds = CreateBounds(minimumInput.Read(), maximumInput.Read());
+            Recalculate();
+        }
+
+        private FloatRange CreateBounds(float minimum, float maximum)
+        {
+            Modifier.ValidateFinite(minimum, nameof(minimum));
+            Modifier.ValidateFinite(maximum, nameof(maximum));
+            if (minimum > maximum) throw new ArgumentOutOfRangeException(nameof(minimum));
+            var result = new FloatRange(
+                rounding == RoundingMode.None ? minimum : (float)Math.Ceiling(minimum),
+                rounding == RoundingMode.None ? maximum : (float)Math.Floor(maximum));
+            if (result.Min > result.Max) throw new ArgumentOutOfRangeException(nameof(minimum));
+            return result;
+        }
+
+        private static IEnumerable<object> GetDependencyNodes(ValueInput<float> minimum, ValueInput<float> maximum)
+        {
+            if (minimum.DependencyNode != null) yield return minimum.DependencyNode;
+            if (maximum.DependencyNode != null) yield return maximum.DependencyNode;
+        }
+
         internal ModifierHandle AddModifier(Modifier modifier, ModifierSource source, long order)
         {
+            threadGuard.Verify();
             var registration = new ModifierRegistration(modifier, order);
             ModifierHandle handle = null;
             handle = new ModifierHandle(source, ignored =>
             {
                 modifiers.Remove(registration);
+                registration.Dispose();
             }, Recalculate);
+            registration.Subscribe(Recalculate, this);
             source.Add(handle);
             modifiers.Add(registration);
             Recalculate();
@@ -75,6 +140,14 @@ namespace Klrpxy.Gameplay.Stats
         }
 
         private void Recalculate()
+        {
+            threadGuard.Verify();
+            StatsPropagationCoordinator.Execute(RecalculateCore);
+        }
+
+        internal void VerifyThread() => threadGuard.Verify();
+
+        private void RecalculateCore()
         {
             float previous = finalValue;
             float calculated = ModifierCalculation.CalculateArithmetic(baseValue, modifiers);
@@ -101,7 +174,8 @@ namespace Klrpxy.Gameplay.Stats
             finalValue = calculated;
             if (previous != finalValue)
             {
-                OnFinalValueChanged?.Invoke(previous, finalValue);
+                FinalValueChanged?.Invoke();
+                StatsPropagationCoordinator.RecordChange(this, () => OnFinalValueChanged, previous, finalValue);
             }
         }
 
@@ -157,8 +231,10 @@ namespace Klrpxy.Gameplay.Stats
 
         internal static float Clamp(float value, FloatRange range) => Math.Min(Math.Max(value, range.Min), range.Max);
 
-        internal sealed class ModifierRegistration
+        internal sealed class ModifierRegistration : IDisposable
         {
+            private IDisposable subscription;
+            private IDisposable dependencyRegistration;
             public ModifierRegistration(Modifier modifier, long order)
             {
                 Modifier = modifier;
@@ -168,6 +244,30 @@ namespace Klrpxy.Gameplay.Stats
             public Modifier Modifier { get; }
 
             public long Order { get; }
+
+            internal void Subscribe(Action recalculate, object target)
+            {
+                if (Modifier.DynamicValue == null) return;
+                dependencyRegistration = StatsPropagationCoordinator.AddDependencies(Modifier.DynamicValue.DependencyNodes, target);
+                try
+                {
+                    subscription = Modifier.DynamicValue.Subscribe(recalculate);
+                }
+                catch
+                {
+                    dependencyRegistration.Dispose();
+                    dependencyRegistration = null;
+                    throw;
+                }
+            }
+
+            public void Dispose()
+            {
+                subscription?.Dispose();
+                dependencyRegistration?.Dispose();
+                subscription = null;
+                dependencyRegistration = null;
+            }
         }
     }
 }

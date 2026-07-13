@@ -100,6 +100,19 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         }
 
         [Fact]
+        public void DeclaringBoundsPublishesAnActualValueChange()
+        {
+            // 验证声明边界导致当前 Value 被限制时由协调器公开变化。
+            var resource = new Resource(120f);
+            var changes = new System.Collections.Generic.List<(float Previous, float Current)>();
+            resource.OnValueChanged += (previous, current) => changes.Add((previous, current));
+
+            resource.WithBounds(0f, 100f);
+
+            Assert.Equal(new[] { (120f, 100f) }, changes);
+        }
+
+        [Fact]
         public void WithMinimumLimitsValueWithoutAnUpperBound()
         {
             // 验证 WithMinimum 表达没有上限的固定下界。
@@ -132,6 +145,234 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             resource.Set(1.9f);
 
             Assert.Equal(1.5f, resource.Value);
+        }
+
+        [Fact]
+        public void ValueChangeEventReportsOnlyActualChanges()
+        {
+            // 验证 Resource 只在 Value 实际变化时报告旧值和新值。
+            var resource = new Resource(100f);
+            var changes = new System.Collections.Generic.List<(float Previous, float Current)>();
+            resource.OnValueChanged += (previous, current) => changes.Add((previous, current));
+
+            resource.Set(100f);
+            resource.Decrease(25f);
+
+            Assert.Equal(new[] { (100f, 75f) }, changes);
+        }
+
+        [Fact]
+        public void ChangeEventDefersReentrantChangesUntilCurrentNotificationCompletes()
+        {
+            // 验证事件回调产生的新修改在当前事件全部监听者完成后才按 FIFO 通知。
+            var resource = new Resource(100f);
+            var notifications = new System.Collections.Generic.List<string>();
+            resource.OnValueChanged += (previous, current) =>
+            {
+                notifications.Add("first:" + current);
+                if (current == 75f) resource.Set(50f);
+            };
+            resource.OnValueChanged += (previous, current) => notifications.Add("second:" + current);
+
+            resource.Set(75f);
+
+            Assert.Equal(
+                new[] { "first:75", "second:75", "first:50", "second:50" },
+                notifications);
+        }
+
+        [Fact]
+        public void ChangeEventContinuesAfterListenerThrows()
+        {
+            // 验证单个 Resource 监听者异常不会阻断其余监听者。
+            var resource = new Resource(100f);
+            var notified = false;
+            resource.OnValueChanged += (previous, current) => throw new InvalidOperationException("test");
+            resource.OnValueChanged += (previous, current) => notified = true;
+
+            resource.Set(75f);
+
+            Assert.True(notified);
+        }
+
+        [Fact]
+        public void DynamicMaximumClampsValueWhenSourceStatChanges()
+        {
+            // 验证 Resource 的动态最大边界会随来源 Stat 的 FinalValue 变化而立即钳制 Value。
+            var maximum = new Stat(100f);
+            var resource = new Resource(80f)
+                .WithBounds(0f, ValueInput.Final(maximum), ResourceBoundPolicy.Clamp);
+
+            maximum.BaseValue = 50f;
+
+            Assert.Equal(50f, resource.Value);
+        }
+
+        [Fact]
+        public void DeclaringDynamicBoundsPublishesAnActualValueChange()
+        {
+            // 验证声明动态边界导致当前 Value 被限制时公开变化。
+            var maximum = new ObservableValue(100f);
+            var resource = new Resource(120f);
+            var changes = new System.Collections.Generic.List<(float Previous, float Current)>();
+            resource.OnValueChanged += (previous, current) => changes.Add((previous, current));
+
+            resource.WithBounds(0f, ValueInput.External(maximum));
+
+            Assert.Equal(new[] { (120f, 100f) }, changes);
+        }
+
+        [Fact]
+        public void DynamicMaximumPreservesRatioWhenConfigured()
+        {
+            // 验证 PreserveRatio 策略会在动态最大值变化时保持 Resource 填充比例。
+            var maximum = new Stat(100f);
+            var resource = new Resource(80f)
+                .WithBounds(0f, ValueInput.Final(maximum), ResourceBoundPolicy.PreserveRatio);
+
+            maximum.BaseValue = 50f;
+
+            Assert.Equal(40f, resource.Value);
+        }
+
+        [Fact]
+        public void DynamicMaximumTracksCurrentResourceInput()
+        {
+            // 验证动态边界可以读取另一个 Resource 的当前 Value。
+            var capacity = new Resource(100f);
+            var resource = new Resource(80f)
+                .WithBounds(0f, ValueInput.Current(capacity), ResourceBoundPolicy.Clamp);
+
+            capacity.Set(50f);
+
+            Assert.Equal(50f, resource.Value);
+        }
+
+        [Fact]
+        public void DynamicMaximumTracksBaseStatInput()
+        {
+            // 验证动态边界可以读取 Stat 的 BaseValue。
+            var maximum = new Stat(100f);
+            var resource = new Resource(80f)
+                .WithBounds(0f, ValueInput.Base(maximum), ResourceBoundPolicy.Clamp);
+
+            maximum.BaseValue = 50f;
+
+            Assert.Equal(50f, resource.Value);
+        }
+
+        [Fact]
+        public void SourceEventObservesEntireAffectedGraphAfterRecalculation()
+        {
+            // 验证来源 Stat 的公开事件派发前，受影响 Resource 已完成同轮更新。
+            var maximum = new Stat(100f);
+            var observedResourceValue = -1f;
+            var resource = new Resource(80f);
+            maximum.OnFinalValueChanged += (previous, current) => observedResourceValue = resource.Value;
+            resource.WithBounds(0f, ValueInput.Final(maximum), ResourceBoundPolicy.Clamp);
+
+            maximum.BaseValue = 50f;
+
+            Assert.Equal(50f, observedResourceValue);
+        }
+
+        [Fact]
+        public void DynamicResourceCycleIsRejectedBeforeBoundsChange()
+        {
+            // 验证会形成 Resource Current 环的动态边界在改变目标前被原子拒绝。
+            var first = new Resource(80f);
+            var second = new Resource(100f);
+            first.WithBounds(0f, ValueInput.Current(second));
+
+            Assert.Throws<InvalidOperationException>(() =>
+                second.WithBounds(0f, ValueInput.Current(first)));
+
+            second.Set(120f);
+            Assert.Equal(120f, second.Value);
+        }
+
+        [Fact]
+        public void ListenerSnapshotIsStableDuringEventDispatch()
+        {
+            // 验证事件开始时固定监听者快照，派发中的增删从下一事件生效。
+            var resource = new Resource(100f);
+            var notifications = new System.Collections.Generic.List<string>();
+            Action<float, float> second = (previous, current) => notifications.Add("second:" + current);
+            Action<float, float> added = (previous, current) => notifications.Add("added:" + current);
+            resource.OnValueChanged += (previous, current) =>
+            {
+                notifications.Add("first:" + current);
+                resource.OnValueChanged -= second;
+                resource.OnValueChanged += added;
+            };
+            resource.OnValueChanged += second;
+
+            resource.Set(75f);
+            resource.Set(50f);
+
+            Assert.Equal(
+                new[] { "first:75", "second:75", "first:50", "added:50" },
+                notifications);
+        }
+
+        [Fact]
+        public void DiagnosticHandlerFailureDoesNotInterruptEventQueue()
+        {
+            // 验证诊断处理器自身异常不会阻断其他监听者和后续事件。
+            Action<Exception> previousHandler = StatsDiagnostics.EventExceptionHandler;
+            try
+            {
+                var resource = new Resource(100f);
+                var notified = false;
+                StatsDiagnostics.EventExceptionHandler = exception => throw new InvalidOperationException("diagnostic");
+                resource.OnValueChanged += (previous, current) => throw new InvalidOperationException("listener");
+                resource.OnValueChanged += (previous, current) => notified = true;
+
+                resource.Set(75f);
+
+                Assert.True(notified);
+            }
+            finally
+            {
+                StatsDiagnostics.EventExceptionHandler = previousHandler;
+            }
+        }
+
+        [Fact]
+        public void EventFeedbackBeyondBudgetIsReportedAndStopped()
+        {
+            // 验证动态事件反馈超过内部预算时被报告并停止，而不会无限执行或向外抛出。
+            Action<Exception> previousHandler = StatsDiagnostics.EventExceptionHandler;
+            try
+            {
+                var resource = new Resource(0f);
+                Exception reported = null;
+                StatsDiagnostics.EventExceptionHandler = exception => reported = exception;
+                resource.OnValueChanged += (previous, current) => resource.Set(current == 0f ? 1f : 0f);
+
+                resource.Set(1f);
+
+                Assert.NotNull(reported);
+                Assert.Contains("feedback budget", reported.Message);
+            }
+            finally
+            {
+                StatsDiagnostics.EventExceptionHandler = previousHandler;
+            }
+        }
+
+        [Fact]
+        public void DynamicMinimumAndMaximumBothUpdateResource()
+        {
+            // 验证 Resource 的动态 Min 和 Max 都会驱动当前 Value 更新。
+            var minimum = new ObservableValue(0f);
+            var maximum = new ObservableValue(100f);
+            var resource = new Resource(50f)
+                .WithBounds(ValueInput.External(minimum), ValueInput.External(maximum));
+
+            minimum.Value = 60f;
+
+            Assert.Equal(60f, resource.Value);
         }
     }
 }

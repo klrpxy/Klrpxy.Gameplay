@@ -58,6 +58,41 @@ namespace KlrpxyGameplayStats.Runtime.Tests
 
             Assert.Equal((12f, 18f), (owner.StatSet.Value.FinalRange.Min, owner.StatSet.Value.FinalRange.Max));
         }
+
+        [Fact]
+        public void DynamicRangeBoundsTrackDeclaredInputs()
+        {
+            // 验证 RangeStat 动态边界随 ValueInput 变化并立即更新 FinalRange。
+            var minimum = new ObservableValue(0f);
+            var maximum = new Stat(20f);
+            var range = new RangeStat(10f, 30f)
+                .WithBounds(ValueInput.External(minimum), ValueInput.Final(maximum));
+
+            maximum.BaseValue = 15f;
+
+            Assert.Equal((10f, 15f), (range.FinalRange.Min, range.FinalRange.Max));
+        }
+
+        [Fact]
+        public void FinalRangeInputPropagatesBeforeRangeEventIsPublished()
+        {
+            // 验证 Range Final 输入会传播到目标，且 Range 公开事件观察到稳定后的整张图。
+            var rangeOwner = new RangeTestOwner(new RangeTestStatSet());
+            var target = new TestOwner(new TestStatSet());
+            var source = new ModifierSource();
+            target.AddModifier(
+                Modifier.Flat(
+                    ModifierValue.From(ValueInput.Final(rangeOwner.StatSet.Damage), range => range.Max),
+                    TestStatSet.HealthKey),
+                source);
+            var observedTarget = -1f;
+            rangeOwner.StatSet.Damage.OnFinalRangeChanged += (previous, current) =>
+                observedTarget = target.StatSet.Health.FinalValue;
+
+            rangeOwner.AddModifier(Modifier.Flat(5f, RangeTestStatSet.DamageKey), source);
+
+            Assert.Equal(120f, observedTarget);
+        }
     }
 
     public sealed class RangeTestStatSet : StatSet

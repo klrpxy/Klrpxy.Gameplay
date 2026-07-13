@@ -7,9 +7,11 @@ namespace Klrpxy.Gameplay.Stats
     {
         private readonly HashSet<ModifierHandle> handles = new HashSet<ModifierHandle>();
         private bool disposed;
+        private readonly GameplayThreadGuard threadGuard = new GameplayThreadGuard();
 
         internal void ThrowIfDisposed()
         {
+            threadGuard.Verify();
             if (disposed)
             {
                 throw new ObjectDisposedException(nameof(ModifierSource));
@@ -27,22 +29,29 @@ namespace Klrpxy.Gameplay.Stats
             handles.Remove(handle);
         }
 
+        internal void VerifyThread() => threadGuard.Verify();
+
         public void RemoveAllModifiers()
         {
-            var refreshes = new HashSet<Action>();
-            foreach (ModifierHandle handle in new List<ModifierHandle>(handles))
+            threadGuard.Verify();
+            StatsPropagationCoordinator.Execute(() =>
             {
-                handle.RemoveForSource(refreshes);
-            }
+                var refreshes = new HashSet<Action>();
+                foreach (ModifierHandle handle in new List<ModifierHandle>(handles))
+                {
+                    handle.RemoveForSource(refreshes);
+                }
 
-            foreach (Action refresh in refreshes)
-            {
-                refresh();
-            }
+                foreach (Action refresh in refreshes)
+                {
+                    refresh();
+                }
+            });
         }
 
         public void Dispose()
         {
+            threadGuard.Verify();
             if (disposed)
             {
                 return;
