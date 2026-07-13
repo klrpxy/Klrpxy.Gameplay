@@ -19,6 +19,7 @@ namespace KlrpxyGameplayTags.Tests
         [Fact]
         public void MarkerAttributeComesFromRuntimeInsteadOfGeneratedConsumerSource()
         {
+            // 验证生成标记特性来自 Runtime，而不是重复生成到消费者源码中。
             Compilation compilation = RunGenerator(@"
 using Klrpxy.Gameplay.Tags;
 
@@ -39,6 +40,7 @@ public static partial class ProjectTags
         [Fact]
         public void GeneratedGameplayInterfaceReadsClassLocalTagTableAndUsesRuntimeTagSetAndQuery()
         {
+            // 验证生成接口读取类内 TagTable，并使用 Runtime 的 TagSet 与 TagQuery 行为。
             Compilation outputCompilation = RunGenerator(@"
 using Klrpxy.Gameplay.Tags;
 
@@ -73,6 +75,7 @@ Ability.Attack"";
         [Fact]
         public void MultipleRootsInDifferentNamespacesShareOneGeneratedTagUniverse()
         {
+            // 验证不同命名空间的多个根标签类共享同一个 Tag universe。
             Compilation outputCompilation = RunGenerator(@"
 using Klrpxy.Gameplay.Tags;
 using Consumer.Combat;
@@ -119,6 +122,7 @@ namespace Consumer
         [Fact]
         public void GeneratedGameplayInterfacePreservesTagSetMutationSemantics()
         {
+            // 验证生成接口保留 TagSet 添加、移除和查询的变更语义。
             Compilation outputCompilation = RunGenerator(@"
 using Klrpxy.Gameplay.Tags;
 
@@ -170,6 +174,7 @@ namespace Consumer
         [Fact]
         public void GeneratedGameplayInterfacePublishesTagSetChangesOnlyForActualMutations()
         {
+            // 验证 TagSet 只在集合实际变化时发布变化事件。
             Compilation outputCompilation = RunGenerator(@"
 using System.Collections.Generic;
 using Klrpxy.Gameplay.Tags;
@@ -210,6 +215,7 @@ namespace Consumer
         [Fact]
         public void GeneratedTagsRetainCanonicalHierarchyAndControlledConstruction()
         {
+            // 验证生成标签保持规范层级关系，并禁止外部随意构造。
             Compilation outputCompilation = RunGenerator(@"
 using Klrpxy.Gameplay.Tags;
 
@@ -257,6 +263,7 @@ namespace Consumer
         [Fact]
         public void ConsumerCannotConstructOrDeriveGeneratedTags()
         {
+            // 验证消费者既不能直接构造 Tag，也不能从生成的 Tag 类型派生。
             Compilation outputCompilation = RunGenerator(@"
 using Klrpxy.Gameplay.Tags;
 
@@ -290,6 +297,7 @@ namespace Consumer
         [Fact]
         public void GeneratedGameplayInterfacePreservesQueryCombinators()
         {
+            // 验证生成接口完整保留 All、Any 和 None 查询组合行为。
             Compilation outputCompilation = RunGenerator(@"
 using Klrpxy.Gameplay.Tags;
 
@@ -329,6 +337,7 @@ Ability.Attack"";
         [Fact]
         public void TagTableMustBeTheRootsOnlyPrivateConstStringField()
         {
+            // 验证根标签类必须且只能使用私有 const string TagTable 声明标签。
             GenerationResult missing = RunGeneratorWithDiagnostics(@"
 using Klrpxy.Gameplay.Tags;
 [GenerateGameplayTags]
@@ -345,6 +354,7 @@ public static partial class ProjectTags { public const string TagTable = ""Unit"
         [Fact]
         public void EveryRootMustDeclareExactlyOnePrivateConstStringTagTable()
         {
+            // 验证每个根标签类都必须恰好声明一个私有 const string TagTable。
             GenerationResult result = RunGeneratorWithDiagnostics(@"
 using Klrpxy.Gameplay.Tags;
 [GenerateGameplayTags]
@@ -366,6 +376,7 @@ public static partial class Duplicate
         [Fact]
         public void LegacyExternalTagTableProducesMigrationDiagnostic()
         {
+            // 验证旧版外部 Tag Table 会产生明确的迁移诊断。
             GenerationResult result = RunGeneratorWithDiagnostics(
                 @"
 using Klrpxy.Gameplay.Tags;
@@ -383,6 +394,7 @@ public static partial class ProjectTags { }",
         [Fact]
         public void InvalidTagTablePathsAreReportedWhileBlankLinesAndCommentsAreIgnored()
         {
+            // 验证非法标签路径会被报告，而空行和注释会被忽略。
             GenerationResult result = RunGeneratorWithDiagnostics(@"
 using Klrpxy.Gameplay.Tags;
 [GenerateGameplayTags]
@@ -402,6 +414,7 @@ Unit.Enemy
         [Fact]
         public void InvalidRootsAndDuplicatePathsAcrossRootsAreRejected()
         {
+            // 验证非法根标签类和跨根重复标签路径都会被拒绝。
             GenerationResult invalid = RunGeneratorWithDiagnostics(@"
 using Klrpxy.Gameplay.Tags;
 [GenerateGameplayTags]
@@ -422,6 +435,7 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
         [Fact]
         public void PathsImplicitlyDeclaredByAnotherRootAreRejected()
         {
+            // 验证已由其他根隐式声明的父路径不能再次显式声明。
             GenerationResult result = RunGeneratorWithDiagnostics(@"
 using Klrpxy.Gameplay.Tags;
 [GenerateGameplayTags]
@@ -433,6 +447,7 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
                 diagnostic.Id == "KTAG004" && diagnostic.GetMessage().Contains("Unit.Enemy"));
         }
 
+        // 编译并加载消费者程序集，然后调用 ConsumerContract.Verify 返回运行结果。
         private static object RunConsumerContract(Compilation compilation)
         {
             AssertCompiles(compilation);
@@ -450,11 +465,13 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
             }
         }
 
+        // 使用给定消费者源码运行 Tags Generator，并返回生成后的编译结果。
         private static Compilation RunGenerator(string source)
         {
             return RunGeneratorWithDiagnostics(source).Compilation;
         }
 
+        // 创建消费者编译、运行 Tags Generator，并同时返回输出编译和生成诊断。
         private static GenerationResult RunGeneratorWithDiagnostics(
             string source,
             params AdditionalText[] additionalFiles)
@@ -483,6 +500,7 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
             return new GenerationResult(outputCompilation, diagnostics);
         }
 
+        // 检查编译结果中不存在错误，并在失败时输出全部错误诊断。
         private static void AssertCompiles(Compilation compilation)
         {
             Diagnostic[] errors = compilation.GetDiagnostics()
@@ -492,6 +510,7 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
             Assert.True(errors.Length == 0, string.Join(Environment.NewLine, errors.Select(error => error.ToString())));
         }
 
+        // 收集运行消费者编译所需的 .NET 框架与 Tags Runtime 程序集引用。
         private static MetadataReference[] GetFrameworkReferences()
         {
             return ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))
