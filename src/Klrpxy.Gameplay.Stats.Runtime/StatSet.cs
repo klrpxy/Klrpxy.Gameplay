@@ -40,7 +40,52 @@ namespace Klrpxy.Gameplay.Stats
                 throw new InvalidOperationException("The StatSet already belongs to a StatsOwner.");
             }
 
+            var members = new List<StatMemberDescriptor>();
+            AppendGeneratedMembers(members);
+            var seenMembers = new HashSet<object>();
+            foreach (StatMemberDescriptor member in members)
+            {
+                object value = member.GetMember(this);
+                if (value == null)
+                {
+                    throw new InvalidOperationException("The StatSet member '" + member.Path + "' must not be null.");
+                }
+
+                if (!seenMembers.Add(value))
+                {
+                    throw new InvalidOperationException("The StatSet member '" + member.Path + "' duplicates another member instance.");
+                }
+
+                if (GetMemberStatSet(value) != null)
+                {
+                    throw new InvalidOperationException("The StatSet member '" + member.Path + "' already belongs to another StatSet.");
+                }
+            }
+
+            foreach (StatMemberDescriptor member in members)
+            {
+                SetMemberStatSet(member.GetMember(this), this);
+            }
+
             Owner = owner;
+        }
+
+        private static StatSet GetMemberStatSet(object member)
+        {
+            var stat = member as Stat;
+            if (stat != null) return stat.StatSet;
+            var rangeStat = member as RangeStat;
+            if (rangeStat != null) return rangeStat.StatSet;
+            return ((Resource)member).StatSet;
+        }
+
+        private static void SetMemberStatSet(object member, StatSet statSet)
+        {
+            var stat = member as Stat;
+            if (stat != null) { stat.StatSet = statSet; return; }
+            var rangeStat = member as RangeStat;
+            if (rangeStat != null) { rangeStat.StatSet = statSet; return; }
+            ((Resource)member).StatSet = statSet;
         }
     }
 }
