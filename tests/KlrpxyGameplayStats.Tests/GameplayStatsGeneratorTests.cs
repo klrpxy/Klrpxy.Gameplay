@@ -18,6 +18,38 @@ namespace KlrpxyGameplayStats.Tests
     public sealed class GameplayStatsGeneratorTests
     {
         [Fact]
+        public void GeneratedRangeStatKeyTargetsRangeModifier()
+        {
+            // 验证生成的 RangeStatKey 可作为 Modifier 的唯一目标并改变 FinalRange。
+            Compilation compilation = RunGenerator(@"
+using Klrpxy.Gameplay.Stats;
+namespace Consumer
+{
+    public sealed partial class WeaponStatSet : StatSet
+    {
+        public RangeStat Damage { get; } = new RangeStat(10f, 15f);
+    }
+    public sealed class Weapon : StatsOwner<WeaponStatSet>
+    {
+        public Weapon() : base(new WeaponStatSet()) { }
+    }
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var weapon = new Weapon();
+            var source = new ModifierSource();
+            weapon.AddModifier(Modifier.Override(new FloatRange(40f, 20f), WeaponStatSet.DamageKey), source);
+            return weapon.StatSet.Damage.FinalRange.Min == 20f
+                && weapon.StatSet.Damage.FinalRange.Max == 40f;
+        }
+    }
+}");
+
+            Assert.True((bool)RunConsumerContract(compilation));
+        }
+
+        [Fact]
         public void GeneratedRangeStatKeyGetsDeclaredRangeStat()
         {
             // 验证生成的 RangeStatKey 能从声明的 StatSet 取得区间属性。
