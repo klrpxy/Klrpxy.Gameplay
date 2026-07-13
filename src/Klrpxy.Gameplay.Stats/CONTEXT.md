@@ -10,8 +10,8 @@ A named numeric property whose value can be defined, modified, and queried withi
 _Avoid_: Attribute, property
 
 **StatSet**:
-A collection of stats that belongs to one StatsOwner and retains an immutable reference to it.
-属于一个 StatsOwner 的属性集合，并持有对该 Owner 不可变的引用。
+A collection of stats and resources that belongs to one StatsOwner and retains an immutable reference to it.
+属于一个 StatsOwner 的 Stat 与 Resource 集合，并持有对该 Owner 不可变的引用。
 _Avoid_: AttributeSet, stat collection
 
 **StatsOwner**:
@@ -25,8 +25,8 @@ A group of stats owners, potentially with different concrete stat set types, tha
 _Avoid_: StatSetGroup, StatsOwner collection
 
 **StatKey**:
-A build-stable identifier for a stat that lets modifiers and other systems refer to that stat without using a raw string.
-在当前构建内保持稳定的 Stat 标识，使 Modifier 和其他系统无需使用裸字符串即可引用目标 Stat。
+A build-stable, target-typed identifier for a stat that lets modifiers and other systems refer to that stat without using a raw string.
+在当前构建内保持稳定并携带目标类型的 Stat 标识，使 Modifier 和其他系统无需使用裸字符串即可引用目标 Stat。
 _Avoid_: StatId, StatDefinition, stat name
 
 **Modifier**:
@@ -40,8 +40,8 @@ A stable identity that groups modifiers produced by the same gameplay source so 
 _Avoid_: Modifier owner, source object
 
 **ModifierHandle**:
-A removable registration of one modifier on one target. It is not the modifier definition itself.
-一个 Modifier 在一个目标上的可移除注册；它不是 Modifier 定义本身。
+A removable attachment of one modifier to a stats owner or owner group. It is not the modifier definition itself.
+一个 Modifier 在 StatsOwner 或 StatsOwnerGroup 上的可移除挂载；它不是 Modifier 定义本身。
 _Avoid_: Modifier reference, modifier token
 
 **DynamicModifierValue**:
@@ -50,9 +50,14 @@ A modifier value derived from explicitly declared value inputs. Input changes ca
 _Avoid_: Reactive modifier, calculated modifier
 
 **ValueInput**:
-An observable numeric input used by a dynamic modifier value. It can expose a stat's base value, a stat's final value, or a changing value supplied by another gameplay context.
-供 DynamicModifierValue 使用的可观察数值输入，可以表示 Stat 的 BaseValue、FinalValue，或其他玩法上下文提供的动态数值。
+An observable numeric input used by a dynamic modifier value. It can expose a stat's base value, a stat's final value, a resource's current value, or a changing value supplied by another gameplay context.
+供 DynamicModifierValue 使用的可观察数值输入，可以表示 Stat 的 BaseValue、FinalValue、Resource 的当前 Value，或其他玩法上下文提供的动态数值。
 _Avoid_: ModifierSource, value provider
+
+**Propagation Round**:
+A synchronous unit of work started by one public Stats mutation. It recalculates the complete affected dependency graph before publishing final value changes.
+由一次 Stats 公开修改开启的同步工作单元；它先完成整个受影响依赖图的重算，再公开最终数值变化。
+_Avoid_: Refresh, batch, update tick
 
 **BaseValue**:
 The unmodified value of a stat before modifiers are applied.
@@ -68,6 +73,11 @@ _Avoid_: Current value, result value
 An optional rule that gives a stat integer semantics by rounding its calculated value before it becomes the final value.
 可选的取整规则，在计算值成为 FinalValue 前对其取整，使 Stat 具备整数语义。
 _Avoid_: Integer stat, rounding modifier
+
+**Resource**:
+A single mutable gameplay value that can be increased, decreased, and constrained by dynamic bounds, but does not accept modifiers.
+可以增加、减少并受动态边界约束，但不接受 Modifier 的单一可变玩法数值。
+_Avoid_: ResourceStat, current stat
 
 **RangeStat**:
 A stat whose value is an interval between a minimum and maximum possible value. It does not represent a current value constrained by a maximum value.

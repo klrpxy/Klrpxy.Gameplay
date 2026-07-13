@@ -12,6 +12,10 @@ Triage roles use Chinese GitHub labels: `待评估`, `待补充信息`, `可交�
 
 Multi-context repo: read root `CONTEXT-MAP.md`, then the relevant context `CONTEXT.md` and `docs/adr/` when present. See `docs/agents/domain.md`.
 
+## Git workflow
+
+Keep `main` releasable and use short-lived branches with pull requests. Do not use a long-lived `develop` branch. See `docs/agents/git-workflow.md`.
+
 ## Commit messages
 
 Use short Chinese commit messages with this format:
