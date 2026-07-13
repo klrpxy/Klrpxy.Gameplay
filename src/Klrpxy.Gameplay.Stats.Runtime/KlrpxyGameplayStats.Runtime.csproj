@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>KlrpxyGameplayStats.Runtime</AssemblyName>
+    <RootNamespace>Klrpxy.Gameplay.Stats</RootNamespace>
+    <LangVersion>8.0</LangVersion>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Klrpxy.Gameplay.Tags.Runtime/KlrpxyGameplayTags.Runtime.csproj" />
+  </ItemGroup>
+</Project>
