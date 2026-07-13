@@ -447,6 +447,7 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
                 diagnostic.Id == "KTAG004" && diagnostic.GetMessage().Contains("Unit.Enemy"));
         }
 
+        // 编译并加载消费者程序集，然后调用 ConsumerContract.Verify 返回运行结果。
         private static object RunConsumerContract(Compilation compilation)
         {
             AssertCompiles(compilation);
@@ -464,11 +465,13 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
             }
         }
 
+        // 使用给定消费者源码运行 Tags Generator，并返回生成后的编译结果。
         private static Compilation RunGenerator(string source)
         {
             return RunGeneratorWithDiagnostics(source).Compilation;
         }
 
+        // 创建消费者编译、运行 Tags Generator，并同时返回输出编译和生成诊断。
         private static GenerationResult RunGeneratorWithDiagnostics(
             string source,
             params AdditionalText[] additionalFiles)
@@ -497,6 +500,7 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
             return new GenerationResult(outputCompilation, diagnostics);
         }
 
+        // 检查编译结果中不存在错误，并在失败时输出全部错误诊断。
         private static void AssertCompiles(Compilation compilation)
         {
             Diagnostic[] errors = compilation.GetDiagnostics()
@@ -506,6 +510,7 @@ public static partial class Second { private const string TagTable = ""Unit.Enem
             Assert.True(errors.Length == 0, string.Join(Environment.NewLine, errors.Select(error => error.ToString())));
         }
 
+        // 收集运行消费者编译所需的 .NET 框架与 Tags Runtime 程序集引用。
         private static MetadataReference[] GetFrameworkReferences()
         {
             return ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))

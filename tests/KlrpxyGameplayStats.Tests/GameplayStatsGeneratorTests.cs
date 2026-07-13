@@ -222,6 +222,7 @@ namespace Consumer
             Assert.True((bool)RunConsumerContract(compilation));
         }
 
+        // 使用给定消费者源码运行 Stats Generator，并返回没有生成错误的输出编译。
         private static Compilation RunGenerator(string source)
         {
             CSharpCompilation compilation = CSharpCompilation.Create(
@@ -250,6 +251,7 @@ namespace Consumer
             return outputCompilation;
         }
 
+        // 编译并加载消费者程序集，然后调用 ConsumerContract.Verify 返回运行结果。
         private static object RunConsumerContract(Compilation compilation)
         {
             AssertCompiles(compilation);
@@ -266,6 +268,7 @@ namespace Consumer
             }
         }
 
+        // 检查编译结果中不存在错误，并在失败时附带生成源码帮助定位问题。
         private static void AssertCompiles(Compilation compilation)
         {
             Diagnostic[] errors = compilation.GetDiagnostics()
@@ -280,6 +283,7 @@ namespace Consumer
                         compilation.SyntaxTrees.Skip(1).Select(tree => tree.ToString())));
         }
 
+        // 收集消费者编译所需的 .NET、Stats Runtime 与 Tags Runtime 程序集引用。
         private static IEnumerable<MetadataReference> GetReferences()
         {
             var paths = new HashSet<string>(
