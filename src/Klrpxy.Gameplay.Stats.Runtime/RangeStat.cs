@@ -12,6 +12,7 @@ namespace Klrpxy.Gameplay.Stats
         private System.IDisposable minimumSubscription;
         private System.IDisposable maximumSubscription;
         private System.IDisposable boundsDependency;
+        private bool disposed;
 
         internal StatSet StatSet { get; set; }
 
@@ -26,7 +27,14 @@ namespace Klrpxy.Gameplay.Stats
 
         public FloatRange BaseRange { get; }
 
-        public FloatRange FinalRange => finalRange;
+        public FloatRange FinalRange
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return finalRange;
+            }
+        }
 
         public event System.Action<FloatRange, FloatRange> OnFinalRangeChanged;
 
@@ -35,6 +43,7 @@ namespace Klrpxy.Gameplay.Stats
         public RangeStat WithBounds(float minimum, float maximum)
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             Modifier.ValidateFinite(minimum, nameof(minimum));
             Modifier.ValidateFinite(maximum, nameof(maximum));
             if (minimum > maximum)
@@ -57,6 +66,7 @@ namespace Klrpxy.Gameplay.Stats
         public RangeStat WithBounds(ValueInput<float> minimum, ValueInput<float> maximum)
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             if (minimum == null) throw new System.ArgumentNullException(nameof(minimum));
             if (maximum == null) throw new System.ArgumentNullException(nameof(maximum));
             FloatRange initialBounds = CreateBounds(minimum.Read(), maximum.Read());
@@ -103,6 +113,7 @@ namespace Klrpxy.Gameplay.Stats
         internal ModifierHandle AddModifier(Modifier modifier, ModifierSource source, long order)
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             var registration = new Stat.ModifierRegistration(modifier, order);
             ModifierHandle handle = null;
             handle = new ModifierHandle(source, ignored =>
@@ -117,21 +128,81 @@ namespace Klrpxy.Gameplay.Stats
             return handle;
         }
 
+        internal void AddConditionalRegistration(Stat.ModifierRegistration registration)
+        {
+            modifiers.Add(registration);
+            try
+            {
+                Recalculate();
+            }
+            catch
+            {
+                modifiers.Remove(registration);
+                registration.Dispose();
+                throw;
+            }
+        }
+
+        internal void RemoveConditionalRegistration(Stat.ModifierRegistration registration)
+        {
+            modifiers.Remove(registration);
+            registration.Dispose();
+        }
+
         private void Recalculate()
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             StatsPropagationCoordinator.Execute(RecalculateCore);
         }
 
-        internal void VerifyThread() => threadGuard.Verify();
+        internal void RecalculateForCoordinator()
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+            RecalculateCore();
+        }
+
+        internal void VerifyThread()
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+        }
+
+        internal void Dispose()
+        {
+            threadGuard.Verify();
+            if (disposed) return;
+            disposed = true;
+            foreach (Stat.ModifierRegistration registration in modifiers) registration.Dispose();
+            modifiers.Clear();
+            minimumSubscription?.Dispose();
+            maximumSubscription?.Dispose();
+            boundsDependency?.Dispose();
+            StatsPropagationCoordinator.RemoveNode(this);
+            minimumSubscription = null;
+            maximumSubscription = null;
+            boundsDependency = null;
+            FinalRangeChanged = null;
+            OnFinalRangeChanged = null;
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (disposed) throw new System.ObjectDisposedException(nameof(RangeStat));
+        }
 
         private void RecalculateCore()
         {
             FloatRange previous = finalRange;
+            var allModifiers = new System.Collections.Generic.List<IModifierEntry>();
+            foreach (Stat.ModifierRegistration modifier in modifiers) allModifiers.Add(modifier);
+            StatSet?.Owner?.AppendGroupModifiers(this, allModifiers);
+            allModifiers.Sort((left, right) => left.Order.CompareTo(right.Order));
             FloatRange range = new FloatRange(
-                ModifierCalculation.CalculateArithmetic(BaseRange.Min, modifiers),
-                ModifierCalculation.CalculateArithmetic(BaseRange.Max, modifiers));
-            Stat.ModifierRegistration overrideRegistration = Stat.SelectWinning(modifiers, ModifierKind.Override);
+                ModifierCalculation.CalculateArithmetic(BaseRange.Min, allModifiers),
+                ModifierCalculation.CalculateArithmetic(BaseRange.Max, allModifiers));
+            IModifierEntry overrideRegistration = Stat.SelectWinning(allModifiers, ModifierKind.Override);
             if (overrideRegistration != null)
             {
                 range = overrideRegistration.Modifier.Range;
@@ -141,7 +212,7 @@ namespace Klrpxy.Gameplay.Stats
             range = Sort(new FloatRange(
                 ModifierCalculation.Round(range.Min, rounding),
                 ModifierCalculation.Round(range.Max, rounding)));
-            FloatRange? clamp = Stat.CombineClamps(modifiers);
+            FloatRange? clamp = Stat.CombineClamps(allModifiers);
             if (clamp.HasValue)
             {
                 range = Clamp(range, clamp.Value);

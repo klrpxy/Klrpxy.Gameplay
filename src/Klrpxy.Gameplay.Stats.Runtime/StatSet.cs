@@ -5,6 +5,8 @@ namespace Klrpxy.Gameplay.Stats
 {
     public abstract class StatSet
     {
+        private readonly List<object> boundMembers = new List<object>();
+
         public StatsOwner Owner { get; private set; }
 
         protected static StatKey<TStat> CreateKey<TStat>(
@@ -66,10 +68,22 @@ namespace Klrpxy.Gameplay.Stats
 
             foreach (StatMemberDescriptor member in members)
             {
-                SetMemberStatSet(member.GetMember(this), this);
+                object value = member.GetMember(this);
+                SetMemberStatSet(value, this);
+                boundMembers.Add(value);
             }
 
             Owner = owner;
+        }
+
+        internal void DisposeMembers()
+        {
+            foreach (object member in boundMembers)
+            {
+                if (member is Stat stat) { stat.Dispose(); continue; }
+                if (member is RangeStat rangeStat) { rangeStat.Dispose(); continue; }
+                ((Resource)member).Dispose();
+            }
         }
 
         private static StatSet GetMemberStatSet(object member)

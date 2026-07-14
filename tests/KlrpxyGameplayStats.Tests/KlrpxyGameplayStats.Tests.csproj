@@ -17,5 +17,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Klrpxy.Gameplay.Stats/KlrpxyGameplayStats.csproj" />
     <ProjectReference Include="../../src/Klrpxy.Gameplay.Stats.Runtime/KlrpxyGameplayStats.Runtime.csproj" />
+    <ProjectReference Include="../../src/Klrpxy.Gameplay.Tags/KlrpxyGameplayTags.csproj" />
   </ItemGroup>
 </Project>

@@ -28,6 +28,8 @@ namespace Klrpxy.Gameplay.Stats
             if (Remove()) refreshes.Add(refresh);
         }
 
+        internal void RemoveWithoutRefresh() => Remove();
+
         private bool Remove()
         {
             if (disposed) return false;

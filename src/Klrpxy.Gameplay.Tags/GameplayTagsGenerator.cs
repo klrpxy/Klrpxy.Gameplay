@@ -464,7 +464,7 @@ namespace Klrpxy.Gameplay.Tags.Generator
 
         private static void AppendTag(StringBuilder source, string indent, IReadOnlyList<string[]> paths)
         {
-            source.Append(indent).AppendLine("public sealed class Tag");
+            source.Append(indent).AppendLine("public sealed class Tag : global::Klrpxy.Gameplay.Tags.Runtime.IGameplayTag");
             source.Append(indent).AppendLine("{");
             source.Append(indent).AppendLine("    private readonly string path;");
             source.Append(indent).AppendLine("    private readonly Tag parent;");
@@ -533,7 +533,7 @@ namespace Klrpxy.Gameplay.Tags.Generator
             source.Append(indent).AppendLine("    public TagSetChangeKind Kind { get; }");
             source.Append(indent).AppendLine("}");
             source.AppendLine();
-            source.Append(indent).AppendLine("public sealed class TagSet");
+            source.Append(indent).AppendLine("public sealed class TagSet : global::Klrpxy.Gameplay.Tags.Runtime.ITagSet");
             source.Append(indent).AppendLine("{");
             source.Append(indent).AppendLine("    private readonly global::Klrpxy.Gameplay.Tags.Runtime.TagSetRuntime<Tag> runtime =");
             source.Append(indent).AppendLine("        new global::Klrpxy.Gameplay.Tags.Runtime.TagSetRuntime<Tag>();");
@@ -547,13 +547,27 @@ namespace Klrpxy.Gameplay.Tags.Generator
             source.Append(indent).AppendLine("            {");
             source.Append(indent).AppendLine("                handler(new TagSetChange(change.Tag, (TagSetChangeKind)change.Kind));");
             source.Append(indent).AppendLine("            }");
+            source.Append(indent).AppendLine("            global::System.Action<global::Klrpxy.Gameplay.Tags.Runtime.TagSetChange> integrationHandler = IntegrationChanged;");
+            source.Append(indent).AppendLine("            if (integrationHandler != null)");
+            source.Append(indent).AppendLine("            {");
+            source.Append(indent).AppendLine("                integrationHandler(new global::Klrpxy.Gameplay.Tags.Runtime.TagSetChange(change.Tag, change.Kind));");
+            source.Append(indent).AppendLine("            }");
             source.Append(indent).AppendLine("        };");
             source.Append(indent).AppendLine("    }");
             source.AppendLine();
             source.Append(indent).AppendLine("    public event global::System.Action<TagSetChange> OnChanged;");
+            source.Append(indent).AppendLine("    private event global::System.Action<global::Klrpxy.Gameplay.Tags.Runtime.TagSetChange> IntegrationChanged;");
+            source.Append(indent).AppendLine("    event global::System.Action<global::Klrpxy.Gameplay.Tags.Runtime.TagSetChange> global::Klrpxy.Gameplay.Tags.Runtime.ITagSet.OnChanged");
+            source.Append(indent).AppendLine("    {");
+            source.Append(indent).AppendLine("        add { IntegrationChanged += value; }");
+            source.Append(indent).AppendLine("        remove { IntegrationChanged -= value; }");
+            source.Append(indent).AppendLine("    }");
             source.AppendLine();
             source.Append(indent).AppendLine("    public bool Add(Tag tag) => runtime.Add(tag);");
             source.Append(indent).AppendLine("    public bool Remove(Tag tag) => runtime.Remove(tag);");
+            source.Append(indent).AppendLine("    bool global::Klrpxy.Gameplay.Tags.Runtime.ITagSet.Add(global::Klrpxy.Gameplay.Tags.Runtime.IGameplayTag tag) => Add((Tag)tag);");
+            source.Append(indent).AppendLine("    bool global::Klrpxy.Gameplay.Tags.Runtime.ITagSet.Remove(global::Klrpxy.Gameplay.Tags.Runtime.IGameplayTag tag) => Remove((Tag)tag);");
+            source.Append(indent).AppendLine("    global::System.Collections.Generic.IEnumerable<global::Klrpxy.Gameplay.Tags.Runtime.IGameplayTag> global::Klrpxy.Gameplay.Tags.Runtime.ITagSet.Values => runtime.Values;");
             source.Append(indent).AppendLine("    public bool HasExact(Tag tag) => runtime.HasExact(tag);");
             source.Append(indent).AppendLine("    public bool Has(Tag tag) => runtime.Has(tag, Tag.IsSameOrDescendant);");
             source.Append(indent).AppendLine("    internal global::Klrpxy.Gameplay.Tags.Runtime.TagSetRuntime<Tag> Runtime => runtime;");
@@ -562,7 +576,7 @@ namespace Klrpxy.Gameplay.Tags.Generator
 
         private static void AppendTagQuery(StringBuilder source, string indent)
         {
-            source.Append(indent).AppendLine("public sealed class TagQuery");
+            source.Append(indent).AppendLine("public sealed class TagQuery : global::Klrpxy.Gameplay.Tags.Runtime.ITagQuery");
             source.Append(indent).AppendLine("{");
             source.Append(indent).AppendLine("    private readonly global::Klrpxy.Gameplay.Tags.Runtime.TagQueryRuntime<Tag> runtime;");
             source.AppendLine();
@@ -588,6 +602,7 @@ namespace Klrpxy.Gameplay.Tags.Generator
             source.Append(indent).AppendLine("    public static TagQuery None(params Tag[] tags) => None(ToQueries(tags));");
             source.Append(indent).AppendLine("    public static TagQuery None() => None(new TagQuery[0]);");
             source.Append(indent).AppendLine("    public bool Matches(TagSet tags) => runtime.Matches(tags.Runtime);");
+            source.Append(indent).AppendLine("    public bool Matches(global::Klrpxy.Gameplay.Tags.Runtime.ITagSet tags) => runtime.Matches(tags);");
             source.AppendLine();
             source.Append(indent).AppendLine("    private static TagQuery[] ToQueries(Tag[] tags)");
             source.Append(indent).AppendLine("    {");

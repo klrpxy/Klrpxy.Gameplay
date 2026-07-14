@@ -2,7 +2,7 @@ using System;
 
 namespace Klrpxy.Gameplay.Tags.Runtime
 {
-    public sealed class TagQueryRuntime<TTag>
+    public sealed class TagQueryRuntime<TTag> : ITagQuery
     {
         private readonly Func<TagSetRuntime<TTag>, bool> matches;
 
@@ -12,6 +12,17 @@ namespace Klrpxy.Gameplay.Tags.Runtime
         }
 
         public bool Matches(TagSetRuntime<TTag> tags) => matches(tags);
+
+        public bool Matches(ITagSet tags)
+        {
+            if (tags == null) throw new ArgumentNullException(nameof(tags));
+            var typedTags = new TagSetRuntime<TTag>();
+            foreach (IGameplayTag value in tags.Values)
+            {
+                if (value is TTag tag) typedTags.Add(tag);
+            }
+            return matches(typedTags);
+        }
 
         public static TagQueryRuntime<TTag> All(params TagQueryRuntime<TTag>[] queries)
         {

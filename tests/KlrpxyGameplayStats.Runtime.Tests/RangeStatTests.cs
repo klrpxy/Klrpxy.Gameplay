@@ -103,6 +103,14 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             statSet => ((RangeTestStatSet)statSet).Damage);
 
         public RangeStat Damage { get; } = new RangeStat(10f, 15f);
+
+        protected override void AppendGeneratedMembers(System.Collections.Generic.ICollection<StatMemberDescriptor> members)
+        {
+            members.Add(CreateMember(
+                "Tests::RangeTestStatSet.Damage",
+                StatMemberKind.RangeStat,
+                statSet => ((RangeTestStatSet)statSet).Damage));
+        }
     }
 
     public sealed class RangeTestOwner : StatsOwner<RangeTestStatSet>

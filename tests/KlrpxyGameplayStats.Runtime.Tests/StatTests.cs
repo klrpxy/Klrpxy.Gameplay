@@ -259,16 +259,19 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         }
 
         [Fact]
-        public async System.Threading.Tasks.Task MutationFromAnotherGameplayThreadFailsImmediately()
+        public void MutationFromAnotherGameplayThreadFailsImmediately()
         {
             // 验证从非创建 Gameplay 线程修改 Stat 会立即失败。
             var stat = new Stat(100f);
-
-            Exception exception = await System.Threading.Tasks.Task.Run(() =>
+            Exception exception = null;
+            var thread = new System.Threading.Thread(() =>
             {
-                try { stat.BaseValue = 50f; return null; }
-                catch (Exception caught) { return caught; }
+                try { stat.BaseValue = 50f; }
+                catch (Exception caught) { exception = caught; }
             });
+
+            thread.Start();
+            thread.Join();
 
             Assert.IsType<InvalidOperationException>(exception);
             Assert.Equal(100f, stat.FinalValue);

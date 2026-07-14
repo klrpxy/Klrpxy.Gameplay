@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using Klrpxy.Gameplay.Stats;
 using Klrpxy.Gameplay.Stats.Generator;
+using Klrpxy.Gameplay.Tags.Generator;
 using Klrpxy.Gameplay.Tags.Runtime;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -531,6 +532,159 @@ namespace Consumer
             Assert.True((bool)RunConsumerContract(compilation));
         }
 
+        [Fact]
+        public void GeneratedTagQueryControlsOwnerModifierThroughPublicApi()
+        {
+            // 验证玩法代码可直接用现有 TagQuery 声明 Modifier 条件并随 Owner Tags 自动启停。
+            Compilation compilation = RunStatsAndTagsGenerators(@"
+using Klrpxy.Gameplay.Stats;
+using Klrpxy.Gameplay.Tags;
+
+[GenerateGameplayTags]
+public static partial class GameTags
+{
+    private const string TagTable = ""Unit.Ally"";
+}
+
+namespace Consumer
+{
+    public sealed partial class HeroStats : StatSet
+    {
+        public Stat Health { get; } = new Stat(100f);
+    }
+
+    public sealed class Hero : StatsOwner<HeroStats>
+    {
+        public Hero() : base(new HeroStats(), GameTags.Unit.Ally) { }
+    }
+
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var hero = new Hero();
+            var source = new ModifierSource();
+            hero.AddModifier(
+                Modifier.Flat(25f, HeroStats.HealthKey)
+                    .WhenTargetMatches(TagQuery.Has(GameTags.Unit.Ally)),
+                source);
+            bool enabled = hero.StatSet.Health.FinalValue == 125f;
+            hero.RemoveTag(GameTags.Unit.Ally);
+            bool disabled = hero.StatSet.Health.FinalValue == 100f;
+            hero.Tags.Add(GameTags.Unit.Ally);
+            return enabled && disabled && hero.StatSet.Health.FinalValue == 125f;
+        }
+    }
+}");
+
+            Assert.True((bool)RunConsumerContract(compilation));
+        }
+
+        [Fact]
+        public void GeneratedTagQueryFiltersGroupMembersAsTagsChange()
+        {
+            // 验证 Group 共享规则通过现有 TagQuery 自动跟随各 Owner 的 Tags 变化。
+            Compilation compilation = RunStatsAndTagsGenerators(@"
+using Klrpxy.Gameplay.Stats;
+using Klrpxy.Gameplay.Tags;
+
+[GenerateGameplayTags]
+public static partial class GameTags
+{
+    private const string TagTable = ""Unit.Ally"";
+}
+
+namespace Consumer
+{
+    public sealed partial class HeroStats : StatSet
+    {
+        public Stat Health { get; } = new Stat(100f);
+    }
+    public sealed class Hero : StatsOwner<HeroStats>
+    {
+        public Hero(params Klrpxy.Gameplay.Tags.Runtime.IGameplayTag[] tags) : base(new HeroStats(), tags) { }
+    }
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var ally = new Hero(GameTags.Unit.Ally);
+            var neutral = new Hero();
+            var group = new StatsOwnerGroup();
+            var source = new ModifierSource();
+            group.Add(ally);
+            group.Add(neutral);
+            group.AddModifier(
+                Modifier.Flat(25f, HeroStats.HealthKey)
+                    .WhenTargetMatches(TagQuery.Has(GameTags.Unit.Ally)),
+                source);
+            bool publicQueryMatchesOwnerTags = TagQuery.Has(GameTags.Unit.Ally).Matches(ally.Tags);
+            Klrpxy.Gameplay.Tags.Runtime.TagSetChange observedChange = null;
+            neutral.Tags.OnChanged += change => observedChange = change;
+            bool initiallyFiltered = ally.StatSet.Health.FinalValue == 125f
+                && neutral.StatSet.Health.FinalValue == 100f;
+            neutral.AddTag(GameTags.Unit.Ally);
+            ally.RemoveTag(GameTags.Unit.Ally);
+            return publicQueryMatchesOwnerTags
+                && observedChange != null
+                && object.ReferenceEquals(observedChange.Tag, GameTags.Unit.Ally)
+                && observedChange.Kind == Klrpxy.Gameplay.Tags.Runtime.TagSetChangeKind.Added
+                && initiallyFiltered
+                && ally.StatSet.Health.FinalValue == 100f
+                && neutral.StatSet.Health.FinalValue == 125f;
+        }
+    }
+}");
+
+            Assert.True((bool)RunConsumerContract(compilation));
+        }
+
+        [Fact]
+        public void TagConditionActivationRetainsOriginalModifierOrder()
+        {
+            // 验证 Tag 条件启停时保留 Modifier 的原始添加顺序。
+            Compilation compilation = RunStatsAndTagsGenerators(@"
+using Klrpxy.Gameplay.Stats;
+using Klrpxy.Gameplay.Tags;
+
+[GenerateGameplayTags]
+public static partial class GameTags
+{
+    private const string TagTable = ""State.Enabled"";
+}
+
+namespace Consumer
+{
+    public sealed partial class HeroStats : StatSet
+    {
+        public Stat Health { get; } = new Stat(100f);
+    }
+    public sealed class Hero : StatsOwner<HeroStats>
+    {
+        public Hero() : base(new HeroStats()) { }
+    }
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var hero = new Hero();
+            var source = new ModifierSource();
+            hero.AddModifier(
+                Modifier.Override(200f, HeroStats.HealthKey)
+                    .WhenTargetMatches(TagQuery.Has(GameTags.State.Enabled)),
+                source);
+            ModifierHandle later = hero.AddModifier(Modifier.Override(300f, HeroStats.HealthKey), source);
+            hero.AddTag(GameTags.State.Enabled);
+            bool laterStillWins = hero.StatSet.Health.FinalValue == 300f;
+            later.Dispose();
+            return laterStillWins && hero.StatSet.Health.FinalValue == 200f;
+        }
+    }
+}");
+
+            Assert.True((bool)RunConsumerContract(compilation));
+        }
+
         // 使用给定消费者源码运行 Stats Generator，并返回没有生成错误的输出编译。
         private static Compilation RunGenerator(string source)
         {
@@ -554,6 +708,29 @@ namespace Consumer
             Assert.True(
                 generatorDiagnostics.Length == 0,
                 string.Join(Environment.NewLine, generatorDiagnostics.Select(diagnostic => diagnostic.ToString())));
+            return outputCompilation;
+        }
+
+        // 同时运行 Stats 与 Tags Generator，验证真实消费者的跨 module 公开行为。
+        private static Compilation RunStatsAndTagsGenerators(string source)
+        {
+            CSharpCompilation compilation = CSharpCompilation.Create(
+                "ConsumerAssembly_" + Guid.NewGuid().ToString("N"),
+                new[]
+                {
+                    CSharpSyntaxTree.ParseText(
+                        source,
+                        new CSharpParseOptions(LanguageVersion.CSharp8),
+                        "Consumer.cs")
+                },
+                GetReferences(),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                new ISourceGenerator[] { new GameplayStatsGenerator(), new GameplayTagsGenerator() },
+                parseOptions: new CSharpParseOptions(LanguageVersion.CSharp8));
+
+            driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation outputCompilation, out ImmutableArray<Diagnostic> diagnostics);
+            Assert.True(diagnostics.Length == 0, string.Join(Environment.NewLine, diagnostics));
             return outputCompilation;
         }
 
