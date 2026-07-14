@@ -11,6 +11,7 @@ using Klrpxy.Gameplay.Tags.Generator;
 using Klrpxy.Gameplay.Tags.Runtime;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Emit;
 using Xunit;
 
@@ -685,6 +686,67 @@ namespace Consumer
             Assert.True((bool)RunConsumerContract(compilation));
         }
 
+        [Fact]
+        public void BazaarBoardAppliesSharedRulesToMatchingHeterogeneousOwners()
+        {
+            Compilation compilation = RunStatsAndTagsGenerators(ReadBazaarGameplaySource());
+
+            Assert.True((bool)RunConsumerContract(compilation, "VerifyBoardRules"));
+        }
+
+        [Fact]
+        public void BazaarEffectsEndThroughHandlesSourcesGroupsAndOwners()
+        {
+            Compilation compilation = RunStatsAndTagsGenerators(ReadBazaarGameplaySource());
+
+            Assert.True((bool)RunConsumerContract(compilation, "VerifyEffectLifetimes"));
+        }
+
+        [Fact]
+        public void BazaarCombatGrowthPublishesStableFinalValuesToUi()
+        {
+            Compilation compilation = RunStatsAndTagsGenerators(ReadBazaarGameplaySource());
+
+            Assert.True((bool)RunConsumerContract(compilation, "VerifyCombatGrowthAndUi"));
+        }
+
+        [Fact]
+        public void BazaarInvalidEffectsFailAtomically()
+        {
+            Compilation compilation = RunStatsAndTagsGenerators(ReadBazaarGameplaySource());
+
+            Assert.True((bool)RunConsumerContract(compilation, "VerifyAtomicFailures"));
+        }
+
+        [Fact]
+        public void BazaarGameplayUsesOnlyTheIntendedPublicCallSurface()
+        {
+            string source = ReadBazaarGameplaySource();
+            SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
+            var forbiddenCalls = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "Register",
+                "Refresh",
+                "Recalculate",
+                "Dispatch",
+                "Rebuild"
+            };
+
+            string[] usedForbiddenCalls = root.DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Select(invocation => GetInvokedName(invocation.Expression))
+                .Where(name => name != null && forbiddenCalls.Contains(name))
+                .ToArray();
+            bool restoresBaseValues = root.DescendantNodes()
+                .OfType<AssignmentExpressionSyntax>()
+                .Any(assignment => assignment.Left is MemberAccessExpressionSyntax member
+                    && member.Name.Identifier.ValueText == "BaseValue");
+
+            Assert.Empty(usedForbiddenCalls);
+            Assert.Empty(root.DescendantNodes().OfType<ForEachStatementSyntax>());
+            Assert.False(restoresBaseValues);
+        }
+
         // 使用给定消费者源码运行 Stats Generator，并返回没有生成错误的输出编译。
         private static Compilation RunGenerator(string source)
         {
@@ -751,7 +813,7 @@ namespace Consumer
         }
 
         // 编译并加载消费者程序集，然后调用 ConsumerContract.Verify 返回运行结果。
-        private static object RunConsumerContract(Compilation compilation)
+        private static object RunConsumerContract(Compilation compilation, string methodName = "Verify")
         {
             AssertCompiles(compilation);
 
@@ -762,9 +824,21 @@ namespace Consumer
 
                 assemblyStream.Position = 0;
                 Assembly assembly = AssemblyLoadContext.Default.LoadFromStream(assemblyStream);
-                MethodInfo verify = assembly.GetType("Consumer.ConsumerContract").GetMethod("Verify");
+                MethodInfo verify = assembly.GetType("Consumer.ConsumerContract").GetMethod(methodName);
                 return verify.Invoke(null, null);
             }
+        }
+
+        private static string ReadBazaarGameplaySource()
+        {
+            return File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "BazaarGameplay.cs.txt"));
+        }
+
+        private static string GetInvokedName(ExpressionSyntax expression)
+        {
+            if (expression is IdentifierNameSyntax identifier) return identifier.Identifier.ValueText;
+            if (expression is MemberAccessExpressionSyntax member) return member.Name.Identifier.ValueText;
+            return null;
         }
 
         // 检查编译结果中不存在错误，并在失败时附带生成源码帮助定位问题。

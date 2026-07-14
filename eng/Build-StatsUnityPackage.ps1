@@ -66,8 +66,10 @@ try
 {
     $assetsRoot = Join-Path $stagingRoot 'Assets\KlrpxyGameplayStats'
     $buildDependenciesRoot = Join-Path $stagingRoot 'Assets\BuildDependencies'
+    $editorRoot = Join-Path $stagingRoot 'Assets\Editor'
     New-Item -ItemType Directory -Path $assetsRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $buildDependenciesRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $editorRoot -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $stagingRoot 'ProjectSettings') -Force | Out-Null
 
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Stats\bin\Release\netstandard2.0\KlrpxyGameplayStats.dll') -Destination (Join-Path $assetsRoot 'KlrpxyGameplayStats.dll')
@@ -79,16 +81,32 @@ try
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Tags.Runtime\bin\Release\netstandard2.0\KlrpxyGameplayTags.Runtime.dll') -Destination (Join-Path $buildDependenciesRoot 'KlrpxyGameplayTags.Runtime.dll')
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Tags\unity-package\KlrpxyGameplayTags.Runtime.dll.meta') -Destination (Join-Path $buildDependenciesRoot 'KlrpxyGameplayTags.Runtime.dll.meta')
     @'
+using System;
+using UnityEditor;
+
+public static class KlrpxyPackageExporter
+{
+    public static void Export()
+    {
+        AssetDatabase.ExportPackage(
+            "Assets/KlrpxyGameplayStats",
+            Environment.GetEnvironmentVariable("KLRPXY_UNITY_PACKAGE_OUTPUT"),
+            ExportPackageOptions.Recurse);
+    }
+}
+'@ | Set-Content -LiteralPath (Join-Path $editorRoot 'KlrpxyPackageExporter.cs') -Encoding utf8
+    @'
 m_EditorVersion: 2022.3.62f3
 m_EditorVersionWithRevision: 2022.3.62f3
 '@ | Set-Content -LiteralPath (Join-Path $stagingRoot 'ProjectSettings\ProjectVersion.txt') -Encoding utf8
 
     $stagedPackage = Join-Path $stagingRoot 'Klrpxy.Gameplay.Stats.unitypackage'
+    $env:KLRPXY_UNITY_PACKAGE_OUTPUT = $stagedPackage
     $process = Start-Process -FilePath $UnityPath -WorkingDirectory $stagingRoot -PassThru -NoNewWindow -ArgumentList @(
-        '-batchmode', '-nographics', '-quit', '-projectPath', '.', '-exportPackage',
-        'Assets/KlrpxyGameplayStats', 'Klrpxy.Gameplay.Stats.unitypackage')
+        '-batchmode', '-nographics', '-quit', '-projectPath', '.', '-executeMethod',
+        'KlrpxyPackageExporter.Export')
     Wait-UnityProcess $process
-    if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $stagedPackage))
+    if (-not (Test-Path -LiteralPath $stagedPackage))
     {
         throw 'UNITY_SCRIPT_EXIT_FAILURE Unity failed to export the Stats package.'
     }
@@ -98,6 +116,7 @@ m_EditorVersionWithRevision: 2022.3.62f3
 }
 finally
 {
+    Remove-Item Env:KLRPXY_UNITY_PACKAGE_OUTPUT -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $stagingRoot)
     {
         Remove-TemporaryDirectory $stagingRoot

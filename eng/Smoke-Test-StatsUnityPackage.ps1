@@ -124,6 +124,10 @@ try
     Import-UnityPackage $validHost 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage' $tagsImportLog
     Import-UnityPackage $validHost 'Klrpxy.Gameplay.Stats.unitypackage' $statsImportLog
 
+    Copy-Item `
+        -LiteralPath (Join-Path $repositoryRoot 'samples\Stats\BazaarGameplay.cs') `
+        -Destination (Join-Path $validHost 'Assets\BazaarGameplay.cs')
+
     @'
 using Klrpxy.Gameplay.Stats;
 using Klrpxy.Gameplay.Stats.Unity;
@@ -133,37 +137,18 @@ using UnityEngine;
 
 namespace Consumer
 {
-    public sealed partial class SmokeStatSet : StatSet
-    {
-        public Stat Health { get; } = new Stat(100f);
-    }
-
-    public sealed class SmokeOwner : StatsOwner<SmokeStatSet>
-    {
-        public SmokeOwner(SmokeStatSet statSet)
-            : base(statSet)
-        {
-        }
-    }
-
     [InitializeOnLoad]
     public static class SmokeContract
     {
         static SmokeContract()
         {
             StatsDiagnosticsUnityAdapter.Install();
-            var statSet = new SmokeStatSet();
-            var owner = new SmokeOwner(statSet);
-            var source = new ModifierSource();
-            owner.AddModifier(Modifier.Flat(5f, SmokeStatSet.HealthKey), source);
-            statSet.Health.OnFinalValueChanged += (previous, current) =>
+            var diagnosticsHero = new Hero();
+            diagnosticsHero.StatSet.Power.OnFinalValueChanged += (previous, current) =>
                 throw new InvalidOperationException("KLRPXY_STATS_DIAGNOSTICS_EXCEPTION");
-            statSet.Health.BaseValue = 120f;
-            Stat health;
-            if (SmokeStatSet.HealthKey.TryGet(statSet, out health)
-                && object.ReferenceEquals(health, statSet.Health)
-                && object.ReferenceEquals(statSet.Owner, owner)
-                && health.FinalValue == 125f)
+            diagnosticsHero.StatSet.Power.BaseValue = 20f;
+
+            if (ConsumerContract.VerifyAll())
             {
                 Debug.Log("KLRPXY_STATS_UNITY_VALID_PASS");
             }
