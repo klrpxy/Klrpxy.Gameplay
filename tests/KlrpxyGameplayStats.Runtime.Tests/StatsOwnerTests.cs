@@ -338,21 +338,23 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         }
 
         [Fact]
-        public async System.Threading.Tasks.Task GroupAndOwnerTagsRejectWrongGameplayThread()
+        public void GroupAndOwnerTagsRejectWrongGameplayThread()
         {
             // 验证 Group 和 Owner Tags 修改都受创建时 Gameplay 线程约束。
             var owner = new LifecycleOwner(new LifecycleStatSet());
             var group = new StatsOwnerGroup();
-            Exception groupError = await System.Threading.Tasks.Task.Run(() =>
+            Exception groupError = null;
+            Exception tagError = null;
+            var thread = new System.Threading.Thread(() =>
             {
-                try { group.Add(owner); return null; }
-                catch (Exception exception) { return exception; }
+                try { group.Add(owner); }
+                catch (Exception exception) { groupError = exception; }
+                try { owner.Tags.Add(new FakeTag()); }
+                catch (Exception exception) { tagError = exception; }
             });
-            Exception tagError = await System.Threading.Tasks.Task.Run(() =>
-            {
-                try { owner.Tags.Add(new FakeTag()); return null; }
-                catch (Exception exception) { return exception; }
-            });
+
+            thread.Start();
+            thread.Join();
 
             Assert.IsType<InvalidOperationException>(groupError);
             Assert.IsType<InvalidOperationException>(tagError);
