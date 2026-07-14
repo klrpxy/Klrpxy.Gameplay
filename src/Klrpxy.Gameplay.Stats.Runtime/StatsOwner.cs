@@ -6,6 +6,7 @@ namespace Klrpxy.Gameplay.Stats
     public abstract class StatsOwner
     {
         private static long nextModifierOrder;
+        private readonly GameplayThreadGuard threadGuard = new GameplayThreadGuard();
         protected StatsOwner(StatSet statSet)
         {
             if (statSet == null)
@@ -21,6 +22,7 @@ namespace Klrpxy.Gameplay.Stats
 
         public ModifierHandle AddModifier(Modifier modifier, ModifierSource source)
         {
+            threadGuard.Verify();
             if (modifier == null)
             {
                 throw new ArgumentNullException(nameof(modifier));

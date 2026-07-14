@@ -19,6 +19,7 @@ namespace Klrpxy.Gameplay.Stats
 
         public void Dispose()
         {
+            source.VerifyThread();
             if (Remove()) refresh();
         }
 

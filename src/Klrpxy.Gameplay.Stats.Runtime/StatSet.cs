@@ -51,6 +51,8 @@ namespace Klrpxy.Gameplay.Stats
                     throw new InvalidOperationException("The StatSet member '" + member.Path + "' must not be null.");
                 }
 
+                VerifyMemberThread(value);
+
                 if (!seenMembers.Add(value))
                 {
                     throw new InvalidOperationException("The StatSet member '" + member.Path + "' duplicates another member instance.");
@@ -77,6 +79,15 @@ namespace Klrpxy.Gameplay.Stats
             var rangeStat = member as RangeStat;
             if (rangeStat != null) return rangeStat.StatSet;
             return ((Resource)member).StatSet;
+        }
+
+        private static void VerifyMemberThread(object member)
+        {
+            var stat = member as Stat;
+            if (stat != null) { stat.VerifyThread(); return; }
+            var rangeStat = member as RangeStat;
+            if (rangeStat != null) { rangeStat.VerifyThread(); return; }
+            ((Resource)member).VerifyThread();
         }
 
         private static void SetMemberStatSet(object member, StatSet statSet)
