@@ -10,5 +10,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="3.8.0" PrivateAssets="all" />
     <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
+    <Compile Remove="unity-package/**/*.cs" />
   </ItemGroup>
 </Project>

@@ -8,6 +8,34 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Remove-TemporaryDirectory([string]$Path)
+{
+    for ($attempt = 0; $attempt -lt 20; $attempt++)
+    {
+        try
+        {
+            [System.IO.Directory]::Delete($Path, $true)
+            return
+        }
+        catch [System.IO.IOException]
+        {
+            Start-Sleep -Milliseconds 250
+        }
+    }
+
+    [System.IO.Directory]::Delete($Path, $true)
+}
+
+function Wait-UnityProcess([System.Diagnostics.Process]$Process)
+{
+    if (-not $Process.WaitForExit(300000))
+    {
+        $Process.Kill()
+        $Process.WaitForExit()
+        throw 'UNITY_TIMEOUT_FAILURE Unity did not exit within five minutes.'
+    }
+}
+
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $generatorProjectPath = Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Stats\KlrpxyGameplayStats.csproj'
 $runtimeProjectPath = Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Stats.Runtime\KlrpxyGameplayStats.Runtime.csproj'
@@ -37,22 +65,29 @@ $stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("KlrpxyGameplayStats
 try
 {
     $assetsRoot = Join-Path $stagingRoot 'Assets\KlrpxyGameplayStats'
+    $buildDependenciesRoot = Join-Path $stagingRoot 'Assets\BuildDependencies'
     New-Item -ItemType Directory -Path $assetsRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $buildDependenciesRoot -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $stagingRoot 'ProjectSettings') -Force | Out-Null
 
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Stats\bin\Release\netstandard2.0\KlrpxyGameplayStats.dll') -Destination (Join-Path $assetsRoot 'KlrpxyGameplayStats.dll')
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Stats\unity-package\KlrpxyGameplayStats.dll.meta') -Destination (Join-Path $assetsRoot 'KlrpxyGameplayStats.dll.meta')
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Stats.Runtime\bin\Release\netstandard2.0\KlrpxyGameplayStats.Runtime.dll') -Destination (Join-Path $assetsRoot 'KlrpxyGameplayStats.Runtime.dll')
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Stats\unity-package\KlrpxyGameplayStats.Runtime.dll.meta') -Destination (Join-Path $assetsRoot 'KlrpxyGameplayStats.Runtime.dll.meta')
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Stats\unity-package\StatsDiagnosticsUnityAdapter.cs') -Destination (Join-Path $assetsRoot 'StatsDiagnosticsUnityAdapter.cs')
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Stats\unity-package\StatsDiagnosticsUnityAdapter.cs.meta') -Destination (Join-Path $assetsRoot 'StatsDiagnosticsUnityAdapter.cs.meta')
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Tags.Runtime\bin\Release\netstandard2.0\KlrpxyGameplayTags.Runtime.dll') -Destination (Join-Path $buildDependenciesRoot 'KlrpxyGameplayTags.Runtime.dll')
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Tags\unity-package\KlrpxyGameplayTags.Runtime.dll.meta') -Destination (Join-Path $buildDependenciesRoot 'KlrpxyGameplayTags.Runtime.dll.meta')
     @'
 m_EditorVersion: 2022.3.62f3
 m_EditorVersionWithRevision: 2022.3.62f3
 '@ | Set-Content -LiteralPath (Join-Path $stagingRoot 'ProjectSettings\ProjectVersion.txt') -Encoding utf8
 
     $stagedPackage = Join-Path $stagingRoot 'Klrpxy.Gameplay.Stats.unitypackage'
-    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $stagingRoot -Wait -PassThru -NoNewWindow -ArgumentList @(
+    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $stagingRoot -PassThru -NoNewWindow -ArgumentList @(
         '-batchmode', '-nographics', '-quit', '-projectPath', '.', '-exportPackage',
         'Assets/KlrpxyGameplayStats', 'Klrpxy.Gameplay.Stats.unitypackage')
+    Wait-UnityProcess $process
     if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $stagedPackage))
     {
         throw 'UNITY_SCRIPT_EXIT_FAILURE Unity failed to export the Stats package.'
@@ -65,7 +100,7 @@ finally
 {
     if (Test-Path -LiteralPath $stagingRoot)
     {
-        Remove-Item -LiteralPath $stagingRoot -Recurse -Force
+        Remove-TemporaryDirectory $stagingRoot
     }
 }
 
