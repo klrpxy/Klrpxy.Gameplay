@@ -18,6 +18,7 @@ namespace Klrpxy.Gameplay.Stats
         private IDisposable minimumSubscription;
         private IDisposable maximumSubscription;
         private IDisposable boundsDependency;
+        private bool disposed;
 
         public Stat(float baseValue, RoundingMode rounding = RoundingMode.None)
         {
@@ -27,12 +28,17 @@ namespace Klrpxy.Gameplay.Stats
 
         public float BaseValue
         {
-            get => baseValue;
+            get
+            {
+                ThrowIfDisposed();
+                return baseValue;
+            }
             set
             {
                 StatsPropagationCoordinator.Execute(() =>
                 {
                     threadGuard.Verify();
+                    ThrowIfDisposed();
                     Modifier.ValidateFinite(value, nameof(value));
                     if (baseValue == value) return;
                     float previous = baseValue;
@@ -43,7 +49,14 @@ namespace Klrpxy.Gameplay.Stats
             }
         }
 
-        public float FinalValue => finalValue;
+        public float FinalValue
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return finalValue;
+            }
+        }
 
         public event Action<float, float> OnFinalValueChanged;
 
@@ -54,6 +67,7 @@ namespace Klrpxy.Gameplay.Stats
         public Stat WithBounds(float minimum, float maximum)
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             Modifier.ValidateFinite(minimum, nameof(minimum));
             Modifier.ValidateFinite(maximum, nameof(maximum));
             if (minimum > maximum)
@@ -76,6 +90,7 @@ namespace Klrpxy.Gameplay.Stats
         public Stat WithBounds(ValueInput<float> minimum, ValueInput<float> maximum)
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             if (minimum == null) throw new ArgumentNullException(nameof(minimum));
             if (maximum == null) throw new ArgumentNullException(nameof(maximum));
             FloatRange initialBounds = CreateBounds(minimum.Read(), maximum.Read());
@@ -125,6 +140,7 @@ namespace Klrpxy.Gameplay.Stats
         internal ModifierHandle AddModifier(Modifier modifier, ModifierSource source, long order)
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             var registration = new ModifierRegistration(modifier, order);
             ModifierHandle handle = null;
             handle = new ModifierHandle(source, ignored =>
@@ -139,27 +155,85 @@ namespace Klrpxy.Gameplay.Stats
             return handle;
         }
 
+        internal void AddConditionalRegistration(ModifierRegistration registration)
+        {
+            modifiers.Add(registration);
+            try
+            {
+                Recalculate();
+            }
+            catch
+            {
+                modifiers.Remove(registration);
+                registration.Dispose();
+                throw;
+            }
+        }
+
+        internal void RemoveConditionalRegistration(ModifierRegistration registration)
+        {
+            modifiers.Remove(registration);
+            registration.Dispose();
+        }
+
         private void Recalculate()
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             StatsPropagationCoordinator.Execute(RecalculateCore);
         }
 
-        internal void VerifyThread() => threadGuard.Verify();
+        internal void RecalculateForCoordinator()
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+            RecalculateCore();
+        }
+
+        internal void VerifyThread()
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+        }
+
+        internal void Dispose()
+        {
+            threadGuard.Verify();
+            if (disposed) return;
+            disposed = true;
+            foreach (ModifierRegistration registration in modifiers) registration.Dispose();
+            modifiers.Clear();
+            minimumSubscription?.Dispose();
+            maximumSubscription?.Dispose();
+            boundsDependency?.Dispose();
+            StatsPropagationCoordinator.RemoveNode(this);
+            minimumSubscription = null;
+            maximumSubscription = null;
+            boundsDependency = null;
+            OnBaseValueChanged = null;
+            FinalValueChanged = null;
+            OnFinalValueChanged = null;
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (disposed) throw new ObjectDisposedException(nameof(Stat));
+        }
 
         private void RecalculateCore()
         {
             float previous = finalValue;
-            float calculated = ModifierCalculation.CalculateArithmetic(baseValue, modifiers);
+            List<IModifierEntry> allModifiers = GetAllModifiers();
+            float calculated = ModifierCalculation.CalculateArithmetic(baseValue, allModifiers);
 
-            ModifierRegistration overrideRegistration = SelectWinning(modifiers, ModifierKind.Override);
+            IModifierEntry overrideRegistration = SelectWinning(allModifiers, ModifierKind.Override);
             if (overrideRegistration != null)
             {
                 calculated = overrideRegistration.Modifier.Value;
             }
 
             calculated = ModifierCalculation.Round(calculated, rounding);
-            FloatRange? clamp = CombineClamps(modifiers);
+            FloatRange? clamp = CombineClamps(allModifiers);
             if (clamp.HasValue)
             {
                 calculated = Clamp(calculated, clamp.Value);
@@ -179,10 +253,19 @@ namespace Klrpxy.Gameplay.Stats
             }
         }
 
-        internal static ModifierRegistration SelectWinning(List<ModifierRegistration> registrations, ModifierKind kind)
+        private List<IModifierEntry> GetAllModifiers()
         {
-            ModifierRegistration result = null;
-            foreach (ModifierRegistration registration in registrations)
+            var result = new List<IModifierEntry>();
+            foreach (ModifierRegistration modifier in modifiers) result.Add(modifier);
+            StatSet?.Owner?.AppendGroupModifiers(this, result);
+            result.Sort((left, right) => left.Order.CompareTo(right.Order));
+            return result;
+        }
+
+        internal static IModifierEntry SelectWinning(List<IModifierEntry> registrations, ModifierKind kind)
+        {
+            IModifierEntry result = null;
+            foreach (IModifierEntry registration in registrations)
             {
                 if (registration.Modifier.Kind != kind
                     || (result != null && (registration.Modifier.Priority < result.Modifier.Priority
@@ -197,10 +280,10 @@ namespace Klrpxy.Gameplay.Stats
             return result;
         }
 
-        internal static FloatRange? CombineClamps(List<ModifierRegistration> registrations)
+        internal static FloatRange? CombineClamps(List<IModifierEntry> registrations)
         {
-            var clamps = new List<ModifierRegistration>();
-            foreach (ModifierRegistration registration in registrations)
+            var clamps = new List<IModifierEntry>();
+            foreach (IModifierEntry registration in registrations)
             {
                 if (registration.Modifier.Kind == ModifierKind.Clamp)
                 {
@@ -215,7 +298,7 @@ namespace Klrpxy.Gameplay.Stats
 
             float minimum = float.NegativeInfinity;
             float maximum = float.PositiveInfinity;
-            foreach (ModifierRegistration clamp in clamps)
+            foreach (IModifierEntry clamp in clamps)
             {
                 minimum = Math.Max(minimum, clamp.Modifier.Range.Min);
                 maximum = Math.Min(maximum, clamp.Modifier.Range.Max);
@@ -231,7 +314,7 @@ namespace Klrpxy.Gameplay.Stats
 
         internal static float Clamp(float value, FloatRange range) => Math.Min(Math.Max(value, range.Min), range.Max);
 
-        internal sealed class ModifierRegistration : IDisposable
+        internal sealed class ModifierRegistration : IDisposable, IModifierEntry
         {
             private IDisposable subscription;
             private IDisposable dependencyRegistration;

@@ -17,6 +17,7 @@ namespace Klrpxy.Gameplay.Stats
         private ValueInput<float> minimumInput;
         private IDisposable minimumSubscription;
         private readonly GameplayThreadGuard threadGuard = new GameplayThreadGuard();
+        private bool disposed;
 
         internal StatSet StatSet { get; set; }
 
@@ -27,7 +28,14 @@ namespace Klrpxy.Gameplay.Stats
             this.value = value;
         }
 
-        public float Value => value;
+        public float Value
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return value;
+            }
+        }
 
         public event Action<float, float> OnValueChanged;
 
@@ -36,6 +44,7 @@ namespace Klrpxy.Gameplay.Stats
         public void Set(float value)
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             StatsPropagationCoordinator.Execute(() => SetCore(value));
         }
 
@@ -69,6 +78,7 @@ namespace Klrpxy.Gameplay.Stats
         public Resource WithBounds(float minimum, float maximum)
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             EnsureBoundsAreNotDeclared();
             EnsureFinite(minimum);
             EnsureFinite(maximum);
@@ -89,6 +99,7 @@ namespace Klrpxy.Gameplay.Stats
         public Resource WithMinimum(float minimum)
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             EnsureBoundsAreNotDeclared();
             EnsureFinite(minimum);
             this.minimum = minimum;
@@ -101,6 +112,7 @@ namespace Klrpxy.Gameplay.Stats
         public Resource WithBounds(float minimum, ValueInput<float> maximum, ResourceBoundPolicy policy = ResourceBoundPolicy.Clamp)
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             EnsureBoundsAreNotDeclared();
             if (maximum == null) throw new ArgumentNullException(nameof(maximum));
             EnsureFinite(minimum);
@@ -138,6 +150,7 @@ namespace Klrpxy.Gameplay.Stats
         public Resource WithBounds(ValueInput<float> minimum, ValueInput<float> maximum, ResourceBoundPolicy policy = ResourceBoundPolicy.Clamp)
         {
             threadGuard.Verify();
+            ThrowIfDisposed();
             EnsureBoundsAreNotDeclared();
             if (minimum == null) throw new ArgumentNullException(nameof(minimum));
             if (maximum == null) throw new ArgumentNullException(nameof(maximum));
@@ -269,6 +282,31 @@ namespace Klrpxy.Gameplay.Stats
             }
         }
 
-        internal void VerifyThread() => threadGuard.Verify();
+        internal void VerifyThread()
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+        }
+
+        internal void Dispose()
+        {
+            threadGuard.Verify();
+            if (disposed) return;
+            disposed = true;
+            minimumSubscription?.Dispose();
+            maximumSubscription?.Dispose();
+            boundsDependency?.Dispose();
+            StatsPropagationCoordinator.RemoveNode(this);
+            minimumSubscription = null;
+            maximumSubscription = null;
+            boundsDependency = null;
+            ValueChanged = null;
+            OnValueChanged = null;
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (disposed) throw new ObjectDisposedException(nameof(Resource));
+        }
     }
 }

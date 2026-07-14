@@ -60,6 +60,23 @@ namespace Klrpxy.Gameplay.Stats
             changeOrder.Add(node);
         }
 
+        internal static void Invalidate(IEnumerable<object> nodes)
+        {
+            Execute(() =>
+            {
+                foreach (object node in nodes)
+                {
+                    if (node is Stat stat) stat.RecalculateForCoordinator();
+                    else ((RangeStat)node).RecalculateForCoordinator();
+                }
+            });
+        }
+
+        internal static void Invalidate(object node)
+        {
+            Invalidate(new[] { node });
+        }
+
         private static void CompleteRound()
         {
             foreach (object node in changeOrder)
@@ -151,6 +168,19 @@ namespace Klrpxy.Gameplay.Stats
             return new DependencyRegistration(addedSources, target);
         }
 
+        internal static void RemoveNode(object node)
+        {
+            dependencies.Remove(node);
+            var emptySources = new List<object>();
+            foreach (KeyValuePair<object, Dictionary<object, int>> dependency in dependencies)
+            {
+                dependency.Value.Remove(node);
+                if (dependency.Value.Count == 0) emptySources.Add(dependency.Key);
+            }
+
+            foreach (object source in emptySources) dependencies.Remove(source);
+        }
+
         private static bool CanReach(object source, object target, HashSet<object> visited)
         {
             if (ReferenceEquals(source, target)) return true;
@@ -196,8 +226,13 @@ namespace Klrpxy.Gameplay.Stats
                 if (sources == null) return;
                 foreach (object source in sources)
                 {
-                    Dictionary<object, int> targets = dependencies[source];
-                    int count = targets[target] - 1;
+                    if (!dependencies.TryGetValue(source, out Dictionary<object, int> targets) ||
+                        !targets.TryGetValue(target, out int currentCount))
+                    {
+                        continue;
+                    }
+
+                    int count = currentCount - 1;
                     if (count == 0) targets.Remove(target); else targets[target] = count;
                     if (targets.Count == 0) dependencies.Remove(source);
                 }

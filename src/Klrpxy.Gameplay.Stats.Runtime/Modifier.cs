@@ -1,10 +1,11 @@
 using System;
+using Klrpxy.Gameplay.Tags.Runtime;
 
 namespace Klrpxy.Gameplay.Stats
 {
     public sealed class Modifier
     {
-        private Modifier(ModifierKind kind, float value, ModifierValue dynamicValue, float valueScale, FloatRange range, int priority, object target)
+        private Modifier(ModifierKind kind, float value, ModifierValue dynamicValue, float valueScale, FloatRange range, int priority, object target, ITagQuery targetCondition = null)
         {
             Kind = kind;
             constantValue = value;
@@ -13,6 +14,7 @@ namespace Klrpxy.Gameplay.Stats
             Range = range;
             Priority = priority;
             Target = target;
+            TargetCondition = targetCondition;
         }
 
         internal ModifierKind Kind { get; }
@@ -30,6 +32,14 @@ namespace Klrpxy.Gameplay.Stats
         internal int Priority { get; }
 
         internal object Target { get; }
+
+        internal ITagQuery TargetCondition { get; }
+
+        public Modifier WhenTargetMatches(ITagQuery query)
+        {
+            if (query == null) throw new ArgumentNullException(nameof(query));
+            return new Modifier(Kind, constantValue, DynamicValue, ValueScale, Range, Priority, Target, query);
+        }
 
         public static Modifier Flat(float value, StatKey<Stat> target) => Create(ModifierKind.Flat, value, target, 0);
 

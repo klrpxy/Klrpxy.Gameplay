@@ -69,5 +69,7 @@ namespace Klrpxy.Gameplay.Tags.Runtime
 
             return false;
         }
+
+        public IEnumerable<TTag> Values => new List<TTag>(tags);
     }
 }

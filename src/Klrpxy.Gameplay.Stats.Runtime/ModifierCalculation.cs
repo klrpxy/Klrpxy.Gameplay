@@ -7,10 +7,10 @@ namespace Klrpxy.Gameplay.Stats
     {
         internal static float CalculateArithmetic(
             float baseValue,
-            IReadOnlyList<Stat.ModifierRegistration> modifiers)
+            IReadOnlyList<IModifierEntry> modifiers)
         {
             float result = baseValue;
-            foreach (Stat.ModifierRegistration registration in modifiers)
+            foreach (IModifierEntry registration in modifiers)
             {
                 if (registration.Modifier.Kind == ModifierKind.Flat)
                 {
@@ -19,7 +19,7 @@ namespace Klrpxy.Gameplay.Stats
             }
 
             float percent = 0f;
-            foreach (Stat.ModifierRegistration registration in modifiers)
+            foreach (IModifierEntry registration in modifiers)
             {
                 if (registration.Modifier.Kind == ModifierKind.Percent)
                 {
@@ -28,7 +28,7 @@ namespace Klrpxy.Gameplay.Stats
             }
 
             result *= 1f + percent;
-            foreach (Stat.ModifierRegistration registration in modifiers)
+            foreach (IModifierEntry registration in modifiers)
             {
                 if (registration.Modifier.Kind == ModifierKind.Multiply)
                 {
