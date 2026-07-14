@@ -58,7 +58,9 @@ $stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("KlrpxyGameplayTagsP
 try
 {
     $assetsRoot = Join-Path $stagingRoot 'Assets\KlrpxyGameplayTags'
+    $editorRoot = Join-Path $stagingRoot 'Assets\Editor'
     New-Item -ItemType Directory -Path $assetsRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $editorRoot -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $stagingRoot 'ProjectSettings') -Force | Out-Null
 
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Tags\bin\Release\netstandard2.0\KlrpxyGameplayTags.dll') -Destination (Join-Path $assetsRoot 'KlrpxyGameplayTags.dll')
@@ -68,16 +70,32 @@ try
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Tags\README.md') -Destination (Join-Path $assetsRoot 'README.md')
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Tags\README.zh-CN.md') -Destination (Join-Path $assetsRoot 'README.zh-CN.md')
     @'
+using System;
+using UnityEditor;
+
+public static class KlrpxyPackageExporter
+{
+    public static void Export()
+    {
+        AssetDatabase.ExportPackage(
+            "Assets/KlrpxyGameplayTags",
+            Environment.GetEnvironmentVariable("KLRPXY_UNITY_PACKAGE_OUTPUT"),
+            ExportPackageOptions.Recurse);
+    }
+}
+'@ | Set-Content -LiteralPath (Join-Path $editorRoot 'KlrpxyPackageExporter.cs') -Encoding utf8
+    @'
 m_EditorVersion: 2022.3.62f3
 m_EditorVersionWithRevision: 2022.3.62f3
 '@ | Set-Content -LiteralPath (Join-Path $stagingRoot 'ProjectSettings\ProjectVersion.txt') -Encoding utf8
 
     $stagedPackage = Join-Path $stagingRoot 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage'
+    $env:KLRPXY_UNITY_PACKAGE_OUTPUT = $stagedPackage
     $process = Start-Process -FilePath $UnityPath -WorkingDirectory $stagingRoot -PassThru -NoNewWindow -ArgumentList @(
-        '-batchmode', '-nographics', '-quit', '-projectPath', '.', '-exportPackage',
-        'Assets/KlrpxyGameplayTags', 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage')
+        '-batchmode', '-nographics', '-quit', '-projectPath', '.', '-executeMethod',
+        'KlrpxyPackageExporter.Export')
     Wait-UnityProcess $process
-    if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $stagedPackage))
+    if (-not (Test-Path -LiteralPath $stagedPackage))
     {
         throw 'Unity failed to export the package.'
     }
@@ -87,6 +105,7 @@ m_EditorVersionWithRevision: 2022.3.62f3
 }
 finally
 {
+    Remove-Item Env:KLRPXY_UNITY_PACKAGE_OUTPUT -ErrorAction SilentlyContinue
     if (Test-Path -LiteralPath $stagingRoot)
     {
         Remove-TemporaryDirectory $stagingRoot
