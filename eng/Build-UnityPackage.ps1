@@ -8,6 +8,34 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Remove-TemporaryDirectory([string]$Path)
+{
+    for ($attempt = 0; $attempt -lt 20; $attempt++)
+    {
+        try
+        {
+            [System.IO.Directory]::Delete($Path, $true)
+            return
+        }
+        catch [System.IO.IOException]
+        {
+            Start-Sleep -Milliseconds 250
+        }
+    }
+
+    [System.IO.Directory]::Delete($Path, $true)
+}
+
+function Wait-UnityProcess([System.Diagnostics.Process]$Process)
+{
+    if (-not $Process.WaitForExit(300000))
+    {
+        $Process.Kill()
+        $Process.WaitForExit()
+        throw 'UNITY_TIMEOUT_FAILURE Unity did not exit within five minutes.'
+    }
+}
+
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $projectPath = Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Tags\KlrpxyGameplayTags.csproj'
 if (-not $OutputPath)
@@ -45,9 +73,10 @@ m_EditorVersionWithRevision: 2022.3.62f3
 '@ | Set-Content -LiteralPath (Join-Path $stagingRoot 'ProjectSettings\ProjectVersion.txt') -Encoding utf8
 
     $stagedPackage = Join-Path $stagingRoot 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage'
-    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $stagingRoot -Wait -PassThru -NoNewWindow -ArgumentList @(
+    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $stagingRoot -PassThru -NoNewWindow -ArgumentList @(
         '-batchmode', '-nographics', '-quit', '-projectPath', '.', '-exportPackage',
         'Assets/KlrpxyGameplayTags', 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage')
+    Wait-UnityProcess $process
     if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $stagedPackage))
     {
         throw 'Unity failed to export the package.'
@@ -60,7 +89,7 @@ finally
 {
     if (Test-Path -LiteralPath $stagingRoot)
     {
-        Remove-Item -LiteralPath $stagingRoot -Recurse -Force
+        Remove-TemporaryDirectory $stagingRoot
     }
 }
 
