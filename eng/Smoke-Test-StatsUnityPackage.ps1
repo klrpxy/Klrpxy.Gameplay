@@ -14,6 +14,34 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Remove-TemporaryDirectory([string]$Path)
+{
+    for ($attempt = 0; $attempt -lt 20; $attempt++)
+    {
+        try
+        {
+            [System.IO.Directory]::Delete($Path, $true)
+            return
+        }
+        catch [System.IO.IOException]
+        {
+            Start-Sleep -Milliseconds 250
+        }
+    }
+
+    [System.IO.Directory]::Delete($Path, $true)
+}
+
+function Wait-UnityProcess([System.Diagnostics.Process]$Process, [string]$LogPath)
+{
+    if (-not $Process.WaitForExit(300000))
+    {
+        $Process.Kill()
+        $Process.WaitForExit()
+        throw "UNITY_TIMEOUT_FAILURE Unity did not exit within five minutes. log=$LogPath"
+    }
+}
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 if (-not $StatsPackagePath)
 {
@@ -50,22 +78,36 @@ m_EditorVersionWithRevision: $UnityVersion
 "@ | Set-Content -LiteralPath (Join-Path $Path 'ProjectSettings\ProjectVersion.txt') -Encoding utf8
 }
 
-function Import-UnityPackage([string]$Path, [string]$PackageName, [string]$LogPath)
+function Write-NegativeHostProject([string]$Path)
 {
-    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $Path -Wait -PassThru -ArgumentList @(
+    New-Item -ItemType Directory -Path (Join-Path $Path 'Assets') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $Path 'ProjectSettings') -Force | Out-Null
+    Copy-Item -LiteralPath $StatsPackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Stats.unitypackage')
+
+    @"
+m_EditorVersion: $UnityVersion
+m_EditorVersionWithRevision: $UnityVersion
+"@ | Set-Content -LiteralPath (Join-Path $Path 'ProjectSettings\ProjectVersion.txt') -Encoding utf8
+}
+
+function Import-UnityPackage([string]$Path, [string]$PackageName, [string]$LogPath, [switch]$AllowCompilationErrors)
+{
+    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $Path -PassThru -ArgumentList @(
         '-batchmode', '-nographics', '-quit', '-projectPath', '.', '-importPackage',
         $PackageName, '-logFile', $LogPath)
-    if ($process.ExitCode -ne 0)
+    Wait-UnityProcess $process $LogPath
+    if ($process.ExitCode -ne 0 -and -not $AllowCompilationErrors)
     {
         throw "UNITY_IMPORT_FAILURE package=$PackageName exit=$($process.ExitCode) log=$LogPath"
     }
 }
 
-function Invoke-UnityHost([string]$Path, [string]$LogPath)
+function Invoke-UnityHost([string]$Path, [string]$LogPath, [switch]$AllowCompilationErrors)
 {
-    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $Path -Wait -PassThru -ArgumentList @(
+    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $Path -PassThru -ArgumentList @(
         '-batchmode', '-nographics', '-quit', '-projectPath', '.', '-logFile', $LogPath)
-    if ($process.ExitCode -ne 0)
+    Wait-UnityProcess $process $LogPath
+    if ($process.ExitCode -ne 0 -and -not $AllowCompilationErrors)
     {
         throw "UNITY_SCRIPT_EXIT_FAILURE exit=$($process.ExitCode) log=$LogPath"
     }
@@ -75,12 +117,17 @@ function Invoke-UnityHost([string]$Path, [string]$LogPath)
 
 try
 {
-    Write-HostProject $hostRoot
-    Import-UnityPackage $hostRoot 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage' (Join-Path $hostRoot 'TagsImport.log')
-    Import-UnityPackage $hostRoot 'Klrpxy.Gameplay.Stats.unitypackage' (Join-Path $hostRoot 'StatsImport.log')
+    $validHost = Join-Path $hostRoot 'valid'
+    Write-HostProject $validHost
+    $tagsImportLog = Join-Path $validHost 'TagsImport.log'
+    $statsImportLog = Join-Path $validHost 'StatsImport.log'
+    Import-UnityPackage $validHost 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage' $tagsImportLog
+    Import-UnityPackage $validHost 'Klrpxy.Gameplay.Stats.unitypackage' $statsImportLog
 
     @'
 using Klrpxy.Gameplay.Stats;
+using Klrpxy.Gameplay.Stats.Unity;
+using System;
 using UnityEditor;
 using UnityEngine;
 
@@ -91,16 +138,32 @@ namespace Consumer
         public Stat Health { get; } = new Stat(100f);
     }
 
+    public sealed class SmokeOwner : StatsOwner<SmokeStatSet>
+    {
+        public SmokeOwner(SmokeStatSet statSet)
+            : base(statSet)
+        {
+        }
+    }
+
     [InitializeOnLoad]
     public static class SmokeContract
     {
         static SmokeContract()
         {
+            StatsDiagnosticsUnityAdapter.Install();
             var statSet = new SmokeStatSet();
+            var owner = new SmokeOwner(statSet);
+            var source = new ModifierSource();
+            owner.AddModifier(Modifier.Flat(5f, SmokeStatSet.HealthKey), source);
+            statSet.Health.OnFinalValueChanged += (previous, current) =>
+                throw new InvalidOperationException("KLRPXY_STATS_DIAGNOSTICS_EXCEPTION");
+            statSet.Health.BaseValue = 120f;
             Stat health;
             if (SmokeStatSet.HealthKey.TryGet(statSet, out health)
                 && object.ReferenceEquals(health, statSet.Health)
-                && health.FinalValue == 100f)
+                && object.ReferenceEquals(statSet.Owner, owner)
+                && health.FinalValue == 125f)
             {
                 Debug.Log("KLRPXY_STATS_UNITY_VALID_PASS");
             }
@@ -111,13 +174,18 @@ namespace Consumer
         }
     }
 }
-'@ | Set-Content -LiteralPath (Join-Path $hostRoot 'Assets\Consumer.cs') -Encoding utf8
+'@ | Set-Content -LiteralPath (Join-Path $validHost 'Assets\Consumer.cs') -Encoding utf8
 
-    $editorLog = Join-Path $hostRoot 'Editor.log'
-    $editorOutput = Invoke-UnityHost $hostRoot $editorLog
+    $editorLog = Join-Path $validHost 'Editor.log'
+    $editorOutput = Invoke-UnityHost $validHost $editorLog
     if ($editorOutput -match '(?m)error CS\d+')
     {
         throw "UNITY_FUNCTIONAL_FAILURE The consumer did not compile. log=$editorLog"
+    }
+
+    if ($editorOutput -notmatch 'KLRPXY_STATS_DIAGNOSTICS_EXCEPTION')
+    {
+        throw "UNITY_FUNCTIONAL_FAILURE StatsDiagnostics did not reach Debug.LogException. log=$editorLog"
     }
 
     $passCount = [regex]::Matches($editorOutput, 'KLRPXY_STATS_UNITY_VALID_PASS').Count
@@ -126,12 +194,54 @@ namespace Consumer
         throw "UNITY_FUNCTIONAL_FAILURE Expected exactly one runtime pass marker but found $passCount. log=$editorLog"
     }
 
+    $validOutput = (Get-Content -Raw -LiteralPath $tagsImportLog),
+        (Get-Content -Raw -LiteralPath $statsImportLog),
+        $editorOutput -join [Environment]::NewLine
+    if ($validOutput -match '(?i)(Microsoft\.CodeAnalysis.*(conflict|duplicate)|AD0001|analyzer.+(exception|crash)|KlrpxyGameplayTags\.Runtime.+already loaded)')
+    {
+        throw "UNITY_FUNCTIONAL_FAILURE Unity reported a Roslyn conflict, analyzer failure, or duplicate dependency. log=$editorLog"
+    }
+
+    $negativeHost = Join-Path $hostRoot 'missing-tags'
+    Write-NegativeHostProject $negativeHost
+    $negativeImportLog = Join-Path $negativeHost 'StatsImport.log'
+    Import-UnityPackage $negativeHost 'Klrpxy.Gameplay.Stats.unitypackage' $negativeImportLog -AllowCompilationErrors
+    @'
+using Klrpxy.Gameplay.Stats;
+
+namespace Consumer
+{
+    public sealed partial class MissingTagsStatSet : StatSet
+    {
+        public Stat Health { get; } = new Stat(100f);
+    }
+}
+'@ | Set-Content -LiteralPath (Join-Path $negativeHost 'Assets\Consumer.cs') -Encoding utf8
+
+    $negativeEditorLog = Join-Path $negativeHost 'Editor.log'
+    $negativeEditorOutput = Invoke-UnityHost $negativeHost $negativeEditorLog -AllowCompilationErrors
+    $negativeOutput = (Get-Content -Raw -LiteralPath $negativeImportLog), $negativeEditorOutput -join [Environment]::NewLine
+    if ($negativeOutput -notmatch 'KlrpxyGameplayStats\.Runtime')
+    {
+        throw "UNITY_FUNCTIONAL_FAILURE The Stats Runtime was not referenced in the missing-Tags project. log=$negativeEditorLog"
+    }
+
+    if ($negativeOutput -notmatch 'KGS003' -or $negativeOutput -notmatch 'Gameplay Tags v0\.2\.0')
+    {
+        throw "UNITY_FUNCTIONAL_FAILURE The missing-Tags project did not report KGS003 with installation guidance. log=$negativeEditorLog"
+    }
+
+    if ($negativeOutput -match '(?i)(AD0001|analyzer.+(exception|crash))')
+    {
+        throw "UNITY_FUNCTIONAL_FAILURE The Stats analyzer failed in the missing-Tags project. log=$negativeEditorLog"
+    }
+
     Write-Output "KLRPXY_STATS_UNITY_SMOKE_PASS unity=$UnityVersion temp=$hostRoot"
 }
 finally
 {
     if ((-not $KeepHost) -and (Test-Path -LiteralPath $hostRoot))
     {
-        Remove-Item -LiteralPath $hostRoot -Recurse -Force
+        Remove-TemporaryDirectory $hostRoot
     }
 }
