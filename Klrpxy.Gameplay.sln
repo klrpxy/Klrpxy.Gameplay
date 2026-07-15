@@ -16,6 +16,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KlrpxyGameplayStats.Runtime
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KlrpxyGameplayStats.Tests", "tests\KlrpxyGameplayStats.Tests\KlrpxyGameplayStats.Tests.csproj", "{DC149854-A16A-4773-8384-033E98883D3B}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KlrpxyGameplayStats.R3", "src\Klrpxy.Gameplay.Stats.R3\KlrpxyGameplayStats.R3.csproj", "{5D2DA93C-E32C-4FA6-A457-985C0D07F3AB}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "KlrpxyGameplayStats.R3.Tests", "tests\KlrpxyGameplayStats.R3.Tests\KlrpxyGameplayStats.R3.Tests.csproj", "{6F763827-9C2A-440E-81EC-CA695C26AA62}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -50,5 +54,13 @@ Global
 		{DC149854-A16A-4773-8384-033E98883D3B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DC149854-A16A-4773-8384-033E98883D3B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DC149854-A16A-4773-8384-033E98883D3B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5D2DA93C-E32C-4FA6-A457-985C0D07F3AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D2DA93C-E32C-4FA6-A457-985C0D07F3AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D2DA93C-E32C-4FA6-A457-985C0D07F3AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D2DA93C-E32C-4FA6-A457-985C0D07F3AB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6F763827-9C2A-440E-81EC-CA695C26AA62}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6F763827-9C2A-440E-81EC-CA695C26AA62}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6F763827-9C2A-440E-81EC-CA695C26AA62}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6F763827-9C2A-440E-81EC-CA695C26AA62}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

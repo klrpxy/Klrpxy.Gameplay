@@ -14,6 +14,9 @@ namespace Klrpxy.Gameplay.Stats
         private readonly List<ConditionalRule> conditionalRules = new List<ConditionalRule>();
         private readonly SubjectTagSet tags;
         private bool disposed;
+
+        internal event Action Disposed;
+
         protected StatSubject(StatSet statSet)
             : this(statSet, Array.Empty<IGameplayTag>())
         {
@@ -173,6 +176,8 @@ namespace Klrpxy.Gameplay.Stats
             tags.OnChanged -= TagsChanged;
             tags.ClearListeners();
             StatSet.DisposeMembers();
+            Disposed?.Invoke();
+            Disposed = null;
         }
 
         private void ThrowIfDisposed()
