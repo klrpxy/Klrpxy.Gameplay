@@ -33,6 +33,8 @@ namespace Klrpxy.Gameplay.Stats
 
         public StatModifierBuilder Modify(Stat stat) => new StatModifierBuilder(this, stat);
 
+        public GroupModifierScopeBuilder For(StatSubjectGroup group) => new GroupModifierScopeBuilder(this, group);
+
         public void RemoveAllModifiers()
         {
             threadGuard.Verify();

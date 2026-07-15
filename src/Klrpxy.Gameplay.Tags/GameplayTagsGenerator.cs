@@ -464,7 +464,7 @@ namespace Klrpxy.Gameplay.Tags.Generator
 
         private static void AppendTag(StringBuilder source, string indent, IReadOnlyList<string[]> paths)
         {
-            source.Append(indent).AppendLine("public sealed class Tag : global::Klrpxy.Gameplay.Tags.Runtime.IGameplayTag");
+            source.Append(indent).AppendLine("public sealed class Tag : global::Klrpxy.Gameplay.Tags.Runtime.IHierarchicalGameplayTag");
             source.Append(indent).AppendLine("{");
             source.Append(indent).AppendLine("    private readonly string path;");
             source.Append(indent).AppendLine("    private readonly Tag parent;");
@@ -477,6 +477,8 @@ namespace Klrpxy.Gameplay.Tags.Generator
             source.AppendLine();
             source.Append(indent).AppendLine("    public string GetPath() => path;");
             source.Append(indent).AppendLine("    public Tag GetParent() => parent;");
+            source.Append(indent).AppendLine("    bool global::Klrpxy.Gameplay.Tags.Runtime.IHierarchicalGameplayTag.IsSameOrDescendantOf(global::Klrpxy.Gameplay.Tags.Runtime.IGameplayTag tag) =>");
+            source.Append(indent).AppendLine("        tag is Tag queried && IsSameOrDescendant(this, queried);");
             source.AppendLine();
 
             foreach (string[] path in paths)
