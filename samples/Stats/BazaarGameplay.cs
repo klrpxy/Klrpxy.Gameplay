@@ -37,7 +37,7 @@ namespace Consumer
         public Stat ChargeRate { get; } = new Stat(5f);
     }
 
-    public sealed class Hero : StatsOwner<HeroStats>
+    public sealed class Hero : StatSubject<HeroStats>
     {
         public Hero()
             : base(new HeroStats(), GameTags.Object.Hero)
@@ -45,7 +45,7 @@ namespace Consumer
         }
     }
 
-    public sealed class Weapon : StatsOwner<WeaponStats>
+    public sealed class Weapon : StatSubject<WeaponStats>
     {
         public Weapon()
             : base(new WeaponStats(), GameTags.Object.Item, GameTags.Item.Weapon, GameTags.Item.Quick)
@@ -53,7 +53,7 @@ namespace Consumer
         }
     }
 
-    public sealed class Relic : StatsOwner<RelicStats>
+    public sealed class Relic : StatSubject<RelicStats>
     {
         public Relic()
             : base(new RelicStats(), GameTags.Object.Item, GameTags.Item.Relic)
@@ -76,7 +76,7 @@ namespace Consumer
             var hero = new Hero();
             var weapon = new Weapon();
             var relic = new Relic();
-            var board = new StatsOwnerGroup();
+            var board = new StatSubjectGroup();
             var aura = new ModifierSource();
             board.Add(hero);
             board.Add(weapon);
@@ -109,7 +109,7 @@ namespace Consumer
         {
             var hero = new Hero();
             var weapon = new Weapon();
-            var board = new StatsOwnerGroup();
+            var board = new StatSubjectGroup();
             var boardAura = new ModifierSource();
             board.Add(hero);
             board.Add(weapon);
@@ -142,10 +142,10 @@ namespace Consumer
             bool boardEndRemovedAura = hero.StatSet.Haste.FinalValue == 0f
                 && weapon.StatSet.Haste.FinalValue == 0f;
 
-            var ownerLifetime = new ModifierSource();
-            hero.AddModifier(Modifier.Flat(50f, HeroStats.PowerKey), ownerLifetime);
+            var subjectLifetime = new ModifierSource();
+            hero.AddModifier(Modifier.Flat(50f, HeroStats.PowerKey), subjectLifetime);
             hero.Dispose();
-            ownerLifetime.Dispose();
+            subjectLifetime.Dispose();
 
             return handleApplied
                 && handleEnded

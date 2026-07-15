@@ -19,10 +19,10 @@ public sealed partial class HeroStats : StatSet
 }
 ```
 
-### 2. Represent the owning object with an Owner
+### 2. Represent the owning object with a Subject
 
 ```csharp
-public sealed class Hero : StatsOwner<HeroStats>
+public sealed class Hero : StatSubject<HeroStats>
 {
     public Hero() : base(new HeroStats()) { }
 }
@@ -47,7 +47,7 @@ Results propagate automatically when a stat or Resource used by a rule changes.
 ```csharp
 var otherHero = new Hero();
 var partyAura = new ModifierSource();
-var party = new StatsOwnerGroup();
+var party = new StatSubjectGroup();
 party.Add(hero);
 party.Add(otherHero);
 party.AddModifier(Modifier.Flat(5f, HeroStats.PowerKey), partyAura);
@@ -68,7 +68,7 @@ Related dependencies have finished propagating when the event runs, so the callb
 
 - `StatSet`: declares a set of stats and resources.
 - Generated keys: target a stat from a `Modifier` with compile-time safety.
-- `StatsOwner` / `StatsOwnerGroup`: define an owner and the scope of shared rules.
+- `StatSubject` / `StatSubjectGroup`: define a subject and the scope of shared rules.
 - `Modifier`: describes a numeric rule.
 - `ModifierSource`: owns the lifetime of a batch of effects.
 - `Resource`: changes through `Set`, `Increase`, and `Decrease`.

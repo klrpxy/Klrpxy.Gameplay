@@ -19,10 +19,10 @@ public sealed partial class HeroStats : StatSet
 }
 ```
 
-### 2. 用 Owner 表示拥有属性的对象
+### 2. 用 Subject 表示拥有属性的对象
 
 ```csharp
-public sealed class Hero : StatsOwner<HeroStats>
+public sealed class Hero : StatSubject<HeroStats>
 {
     public Hero() : base(new HeroStats()) { }
 }
@@ -47,7 +47,7 @@ combat.Dispose();
 ```csharp
 var otherHero = new Hero();
 var partyAura = new ModifierSource();
-var party = new StatsOwnerGroup();
+var party = new StatSubjectGroup();
 party.Add(hero);
 party.Add(otherHero);
 party.AddModifier(Modifier.Flat(5f, HeroStats.PowerKey), partyAura);
@@ -68,7 +68,7 @@ hero.StatSet.Power.OnFinalValueChanged += (previous, current) =>
 
 - `StatSet`：声明一组属性和资源。
 - 生成的 Key：让 `Modifier` 类型安全地指向属性。
-- `StatsOwner` / `StatsOwnerGroup`：表示拥有者与共享规则范围。
+- `StatSubject` / `StatSubjectGroup`：表示拥有者与共享规则范围。
 - `Modifier`：描述数值规则。
 - `ModifierSource`：表示一批效果的生命周期。
 - `Resource`：直接执行 `Set`、`Increase`、`Decrease`。

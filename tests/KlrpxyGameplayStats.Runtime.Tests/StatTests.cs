@@ -30,74 +30,74 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         public void FlatModifierUpdatesFinalValueThroughGeneratedKey()
         {
             // 验证 Modifier 通过生成的 StatKey 挂载后会立即改变 FinalValue。
-            var owner = new TestOwner(new TestStatSet());
+            var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
 
-            owner.AddModifier(Modifier.Flat(25f, TestStatSet.HealthKey), source);
+            subject.AddModifier(Modifier.Flat(25f, TestStatSet.HealthKey), source);
 
-            Assert.Equal(125f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(125f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
         public void ArithmeticModifiersFollowTheFixedCalculationOrder()
         {
             // 验证 Flat、Percent 与 Multiply 按固定阶段组合，而非按添加顺序计算。
-            var owner = new TestOwner(new TestStatSet());
+            var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
 
-            owner.AddModifier(Modifier.Multiply(2f, TestStatSet.HealthKey), source);
-            owner.AddModifier(Modifier.Percent(50f, TestStatSet.HealthKey), source);
-            owner.AddModifier(Modifier.Flat(10f, TestStatSet.HealthKey), source);
+            subject.AddModifier(Modifier.Multiply(2f, TestStatSet.HealthKey), source);
+            subject.AddModifier(Modifier.Percent(50f, TestStatSet.HealthKey), source);
+            subject.AddModifier(Modifier.Flat(10f, TestStatSet.HealthKey), source);
 
-            Assert.Equal(330f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(330f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
         public void RemovingWinningOverrideFallsBackToTheNextRule()
         {
             // 验证移除高优先级 Override 后会自动回退到下一条有效规则。
-            var owner = new TestOwner(new TestStatSet());
+            var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
 
-            owner.AddModifier(Modifier.Override(120f, TestStatSet.HealthKey), source);
-            ModifierHandle winner = owner.AddModifier(
+            subject.AddModifier(Modifier.Override(120f, TestStatSet.HealthKey), source);
+            ModifierHandle winner = subject.AddModifier(
                 Modifier.Override(150f, TestStatSet.HealthKey, priority: 1),
                 source);
 
             winner.Dispose();
 
-            Assert.Equal(120f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(120f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
         public void RoundingAndIntrinsicBoundsApplyAfterTemporaryClamp()
         {
             // 验证 Override 后依次取整、应用临时 Clamp，最后由固有边界决定 FinalValue。
-            var owner = new RoundedTestOwner(new RoundedTestStatSet());
+            var subject = new RoundedTestSubject(new RoundedTestStatSet());
             var source = new ModifierSource();
 
-            owner.AddModifier(Modifier.Override(17.8f, RoundedTestStatSet.ValueKey), source);
-            owner.AddModifier(Modifier.Clamp(0f, 16f, RoundedTestStatSet.ValueKey), source);
+            subject.AddModifier(Modifier.Override(17.8f, RoundedTestStatSet.ValueKey), source);
+            subject.AddModifier(Modifier.Clamp(0f, 16f, RoundedTestStatSet.ValueKey), source);
 
-            Assert.Equal(15f, owner.StatSet.Value.FinalValue);
+            Assert.Equal(15f, subject.StatSet.Value.FinalValue);
         }
 
         [Fact]
         public void SourceRemovalRestoresValueAndDisposedSourceRejectsRegistration()
         {
             // 验证 Source 批量移除会恢复数值，且已 Dispose 的 Source 在改变数值前拒绝注册。
-            var owner = new TestOwner(new TestStatSet());
+            var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
 
             source.RemoveAllModifiers();
-            owner.AddModifier(Modifier.Flat(25f, TestStatSet.HealthKey), source);
+            subject.AddModifier(Modifier.Flat(25f, TestStatSet.HealthKey), source);
             source.RemoveAllModifiers();
             source.Dispose();
 
-            Assert.Equal(100f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(100f, subject.StatSet.Health.FinalValue);
             Assert.Throws<ObjectDisposedException>(() =>
-                owner.AddModifier(Modifier.Flat(50f, TestStatSet.HealthKey), source));
-            Assert.Equal(100f, owner.StatSet.Health.FinalValue);
+                subject.AddModifier(Modifier.Flat(50f, TestStatSet.HealthKey), source));
+            Assert.Equal(100f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
@@ -129,35 +129,35 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         public void DisposingSourceRejectsRegistrationFromRemovalEvent()
         {
             // 验证 Source Dispose 期间的数值事件不能借由回调重新注册 Modifier。
-            var owner = new TestOwner(new TestStatSet());
+            var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var rejected = false;
-            owner.AddModifier(Modifier.Flat(25f, TestStatSet.HealthKey), source);
-            owner.StatSet.Health.OnFinalValueChanged += (previous, current) =>
+            subject.AddModifier(Modifier.Flat(25f, TestStatSet.HealthKey), source);
+            subject.StatSet.Health.OnFinalValueChanged += (previous, current) =>
             {
                 if (current == 100f)
                 {
                     rejected = Assert.Throws<ObjectDisposedException>(() =>
-                        owner.AddModifier(Modifier.Flat(10f, TestStatSet.HealthKey), source)) != null;
+                        subject.AddModifier(Modifier.Flat(10f, TestStatSet.HealthKey), source)) != null;
                 }
             };
 
             source.Dispose();
 
             Assert.True(rejected);
-            Assert.Equal(100f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(100f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
         public void RemovingAllSourceModifiersPublishesOnlyTheFinalValue()
         {
             // 验证批量移除同一 Source 的规则时不会向监听者公开中间数值。
-            var owner = new TestOwner(new TestStatSet());
+            var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var changes = new System.Collections.Generic.List<(float Previous, float Current)>();
-            owner.AddModifier(Modifier.Flat(10f, TestStatSet.HealthKey), source);
-            owner.AddModifier(Modifier.Flat(20f, TestStatSet.HealthKey), source);
-            owner.StatSet.Health.OnFinalValueChanged += (previous, current) => changes.Add((previous, current));
+            subject.AddModifier(Modifier.Flat(10f, TestStatSet.HealthKey), source);
+            subject.AddModifier(Modifier.Flat(20f, TestStatSet.HealthKey), source);
+            subject.StatSet.Health.OnFinalValueChanged += (previous, current) => changes.Add((previous, current));
 
             source.RemoveAllModifiers();
 
@@ -168,23 +168,23 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         public void DynamicModifierRecalculatesWhenDeclaredInputChanges()
         {
             // 验证动态 Modifier 会在显式 ValueInput 变化时自动更新目标 FinalValue。
-            var owner = new TestOwner(new TestStatSet());
+            var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var bonus = new Stat(10f);
             ModifierValue value = ModifierValue.From(ValueInput.Final(bonus), input => input * 2f);
 
-            owner.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
+            subject.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
             bonus.BaseValue = 20f;
 
-            Assert.Equal(140f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(140f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
         public void DynamicModifierCycleIsRejectedBeforeTargetChanges()
         {
             // 验证会形成 FinalValue 环的动态 Modifier 在改变注册和值前被原子拒绝。
-            var first = new TestOwner(new TestStatSet());
-            var second = new TestOwner(new TestStatSet());
+            var first = new TestSubject(new TestStatSet());
+            var second = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             first.AddModifier(
                 Modifier.Flat(
@@ -206,7 +206,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         public void DynamicModifierCombinesThreeDeclaredInputsIncludingExternalValue()
         {
             // 验证动态 Modifier 可组合三个显式输入，并响应外部可观察值变化。
-            var owner = new TestOwner(new TestStatSet());
+            var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var first = new Stat(10f);
             var second = new Resource(5f);
@@ -216,34 +216,34 @@ namespace KlrpxyGameplayStats.Runtime.Tests
                 ValueInput.Current(second),
                 ValueInput.External(external),
                 (a, b, c) => a + b + c);
-            owner.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
+            subject.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
 
             external.Value = 10f;
 
-            Assert.Equal(125f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(125f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
         public void DynamicModifierCanReadFinalRangeInput()
         {
             // 验证动态 Modifier 可以读取 RangeStat 的完整 FinalRange。
-            var owner = new TestOwner(new TestStatSet());
+            var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var range = new RangeStat(10f, 25f);
             ModifierValue value = ModifierValue.From(
                 ValueInput.Final(range),
                 current => current.Max - current.Min);
 
-            owner.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
+            subject.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
 
-            Assert.Equal(115f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(115f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
         public void DynamicModifierCombinesRangeAndScalarInputs()
         {
             // 验证 Range Final 可以与其他显式输入组合成动态 ModifierValue。
-            var owner = new TestOwner(new TestStatSet());
+            var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var range = new RangeStat(10f, 25f);
             var bonus = new ObservableValue(5f);
@@ -252,10 +252,10 @@ namespace KlrpxyGameplayStats.Runtime.Tests
                 ValueInput.External(bonus),
                 (current, extra) => current.Max - current.Min + extra);
 
-            owner.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
+            subject.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
             bonus.Value = 10f;
 
-            Assert.Equal(125f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(125f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
@@ -282,9 +282,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         {
             // 验证菱形依赖导致目标多次重算时，同轮只发布一次开始值到最终值事件。
             var input = new Stat(10f);
-            var left = new TestOwner(new TestStatSet());
-            var right = new TestOwner(new TestStatSet());
-            var target = new TestOwner(new TestStatSet());
+            var left = new TestSubject(new TestStatSet());
+            var right = new TestSubject(new TestStatSet());
+            var target = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             left.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
             right.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
@@ -309,9 +309,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         {
             // 验证节点在同轮传播结束时回到开始值不会发布变化事件。
             var input = new Stat(10f);
-            var left = new TestOwner(new TestStatSet());
-            var right = new TestOwner(new TestStatSet());
-            var target = new TestOwner(new TestStatSet());
+            var left = new TestSubject(new TestStatSet());
+            var right = new TestSubject(new TestStatSet());
+            var target = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             left.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
             right.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
@@ -337,9 +337,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         {
             // 验证外部可观察输入的一次修改只开启一轮传播并公开最终值。
             var input = new ObservableValue(10f);
-            var left = new TestOwner(new TestStatSet());
-            var right = new TestOwner(new TestStatSet());
-            var target = new TestOwner(new TestStatSet());
+            var left = new TestSubject(new TestStatSet());
+            var right = new TestSubject(new TestStatSet());
+            var target = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             left.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.External(input), value => value), TestStatSet.HealthKey), source);
             right.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.External(input), value => value), TestStatSet.HealthKey), source);
@@ -381,8 +381,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         public void RemovingDynamicModifierUnsubscribesInputAndDependencyEdge()
         {
             // 验证移除动态 Modifier 后取消输入订阅并从依赖图删除关系。
-            var first = new TestOwner(new TestStatSet());
-            var second = new TestOwner(new TestStatSet());
+            var first = new TestSubject(new TestStatSet());
+            var second = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             ModifierHandle handle = first.AddModifier(
                 Modifier.Flat(
@@ -414,9 +414,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         public Stat Health { get; } = new Stat(100f);
     }
 
-    public sealed class TestOwner : StatsOwner<TestStatSet>
+    public sealed class TestSubject : StatSubject<TestStatSet>
     {
-        public TestOwner(TestStatSet statSet)
+        public TestSubject(TestStatSet statSet)
             : base(statSet)
         {
         }
@@ -432,9 +432,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         public Stat Value { get; } = new Stat(10.5f, RoundingMode.Floor).WithBounds(0f, 15.5f);
     }
 
-    public sealed class RoundedTestOwner : StatsOwner<RoundedTestStatSet>
+    public sealed class RoundedTestSubject : StatSubject<RoundedTestStatSet>
     {
-        public RoundedTestOwner(RoundedTestStatSet statSet)
+        public RoundedTestSubject(RoundedTestStatSet statSet)
             : base(statSet)
         {
         }

@@ -4,7 +4,7 @@ status: accepted
 
 # 将 Stats 运行时与 Source Generator 分离
 
-Stats Runtime 独立承载 Stat、RangeStat、Resource、Modifier、Owner、Group 和响应式传播；Source Generator 只发现全局或普通命名空间中的顶层、非泛型 `partial StatSet`，为合法的只读属性生成强类型 StatKey、不可变 getter与 Runtime 绑定所需的最薄只读成员描述。生成器只依赖 Roslyn，不生成计算或生命周期行为。
+Stats Runtime 独立承载 Stat、RangeStat、Resource、Modifier、Subject、Group 和响应式传播；Source Generator 只发现全局或普通命名空间中的顶层、非泛型 `partial StatSet`，为合法的只读属性生成强类型 StatKey、不可变 getter与 Runtime 绑定所需的最薄只读成员描述。生成器只依赖 Roslyn，不生成计算或生命周期行为。
 
 生成代码不能直接调用 Runtime 的 internal 构造器。Runtime 在 `StatSet` 上提供受保护的 Key 创建 seam，生成代码通过它创建静态只读 Key；成员描述保存属性路径、种类、类型以及从 StatSet 实例读取成员的 getter，不能在静态元数据中直接引用实例属性。普通玩法代码只使用生成 Key，不接触这条桥接 seam。
 

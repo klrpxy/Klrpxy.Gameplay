@@ -4,7 +4,7 @@ status: accepted
 
 # 将 Stats 响应式传播集中到内部协调器
 
-Stats 以完全内部、按当前 Gameplay 线程共享的传播协调器统一拥有依赖图、循环检测、受影响数值重算、FIFO 事件派发与订阅清理；`Stat`、`RangeStat`、`Resource`、`StatsOwner` 和 `StatsOwnerGroup` 不协调彼此的传播顺序。
+Stats 以完全内部、按当前 Gameplay 线程共享的传播协调器统一拥有依赖图、循环检测、受影响数值重算、FIFO 事件派发与订阅清理；`Stat`、`RangeStat`、`Resource`、`StatSubject` 和 `StatSubjectGroup` 不协调彼此的传播顺序。
 
 每次公开修改开启一个 Propagation Round。协调器先完成全部受影响节点的重算，再为每个实际变化的节点派发一次“轮次开始值到最终值”事件；回到原值时不派发。回调引起的修改开启新轮次并追加到 FIFO 队尾，事件不嵌套。添加会形成最终值依赖环的关系必须在改变图和值之前原子拒绝。
 
