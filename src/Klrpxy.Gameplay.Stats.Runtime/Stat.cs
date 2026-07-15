@@ -148,11 +148,25 @@ namespace Klrpxy.Gameplay.Stats
                 modifiers.Remove(registration);
                 registration.Dispose();
             }, Recalculate);
-            registration.Subscribe(Recalculate, this);
-            source.Add(handle);
-            modifiers.Add(registration);
-            Recalculate();
-            return handle;
+            bool sourceAdded = false;
+            bool modifierAdded = false;
+            try
+            {
+                registration.Subscribe(Recalculate, this);
+                source.Add(handle);
+                sourceAdded = true;
+                modifiers.Add(registration);
+                modifierAdded = true;
+                Recalculate();
+                return handle;
+            }
+            catch
+            {
+                if (modifierAdded) modifiers.Remove(registration);
+                registration.Dispose();
+                if (sourceAdded) source.Remove(handle);
+                throw;
+            }
         }
 
         internal void AddConditionalRegistration(ModifierRegistration registration)

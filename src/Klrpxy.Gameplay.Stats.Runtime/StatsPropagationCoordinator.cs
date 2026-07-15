@@ -36,6 +36,12 @@ namespace Klrpxy.Gameplay.Stats
             }
         }
 
+        internal static void DiscardCurrentRound()
+        {
+            changes.Clear();
+            changeOrder.Clear();
+        }
+
         internal static void RecordChange<T>(object node, Func<Action<T, T>> getListeners, T previous, T current)
         {
             if (mutationDepth == 0)
