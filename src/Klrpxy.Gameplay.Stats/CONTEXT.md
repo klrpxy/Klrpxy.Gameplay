@@ -10,19 +10,19 @@ A named numeric property whose value can be defined, modified, and queried withi
 _Avoid_: Attribute, property
 
 **StatSet**:
-A collection of stats and resources that belongs to one StatsOwner and retains an immutable reference to it.
-属于一个 StatsOwner 的 Stat 与 Resource 集合，并持有对该 Owner 不可变的引用。
+A collection of stats and resources that belongs to one StatSubject and retains an immutable reference to it.
+属于一个 StatSubject 的 Stat 与 Resource 集合，并持有对该 Subject 不可变的引用。
 _Avoid_: AttributeSet, stat collection
 
-**StatsOwner**:
-An object that owns exactly one stat set and a tag set used to classify it. The owner of its stat set cannot change. Objects with only tags are not StatsOwners.
-恰好拥有一个 StatSet 和一个用于自身分类的 TagSet 的对象；StatSet 的 Owner 不可更换，只有 Tag 而没有 StatSet 的对象不属于 StatsOwner。
-_Avoid_: Attribute owner, stat container
+**StatSubject**:
+A subject of stat modification and observation that owns exactly one stat set and a tag set used to classify it. The subject of its stat set cannot change. Objects with only tags are not StatSubjects.
+属性修改和观察所作用的主体，恰好拥有一个 StatSet 和一个用于自身分类的 TagSet；StatSet 的 Subject 不可更换，只有 Tag 而没有 StatSet 的对象不属于 StatSubject。
+_Avoid_: StatsOwner, Attribute owner, stat container
 
-**StatsOwnerGroup**:
-A group of stats owners, potentially with different concrete stat set types, that can apply shared modifiers to compatible members.
-由 StatsOwner 组成的集合，成员可以拥有不同的具体 StatSet 类型，并能向兼容成员应用共享 Modifier。
-_Avoid_: StatSetGroup, StatsOwner collection
+**StatSubjectGroup**:
+A group of stat subjects, potentially with different concrete stat set types, that can apply shared modifiers to compatible members.
+由 StatSubject 组成的集合，成员可以拥有不同的具体 StatSet 类型，并能向兼容成员应用共享 Modifier。
+_Avoid_: StatsOwnerGroup, StatSetGroup, StatSubject collection
 
 **StatKey**:
 A build-stable, target-typed identifier for a stat that lets modifiers and other systems refer to that stat without using a raw string.
@@ -40,8 +40,8 @@ A stable identity that groups modifiers produced by the same gameplay source so 
 _Avoid_: Modifier owner, source object
 
 **ModifierHandle**:
-A removable attachment of one modifier to a stats owner or owner group. It is not the modifier definition itself.
-一个 Modifier 在 StatsOwner 或 StatsOwnerGroup 上的可移除挂载；它不是 Modifier 定义本身。
+A removable attachment of one modifier to a stat subject or subject group. It is not the modifier definition itself.
+一个 Modifier 在 StatSubject 或 StatSubjectGroup 上的可移除挂载；它不是 Modifier 定义本身。
 _Avoid_: Modifier reference, modifier token
 
 **DynamicModifierValue**:
