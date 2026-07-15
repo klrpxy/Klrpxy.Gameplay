@@ -84,6 +84,21 @@ namespace Klrpxy.Gameplay.Stats
             throw new InvalidOperationException("The Modifier target is not declared by this StatSubject.");
         }
 
+        internal ModifierHandle AddDirectModifier(Modifier modifier, Stat stat, ModifierSource source)
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+            source.ThrowIfDisposed();
+            if (stat == null || stat.StatSet?.Subject != this)
+            {
+                throw new InvalidOperationException("The Stat target is not declared by this StatSubject.");
+            }
+
+            ModifierHandle handle = stat.AddModifier(modifier, source, NextModifierOrder());
+            directHandles.Add(handle);
+            return handle;
+        }
+
         private bool HasModifierTarget(Modifier modifier)
         {
             if (modifier.Target is StatKey<Stat> statKey) return statKey.TryGet(StatSet, out Stat _);

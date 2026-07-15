@@ -31,6 +31,8 @@ namespace Klrpxy.Gameplay.Stats
 
         internal void VerifyThread() => threadGuard.Verify();
 
+        public StatModifierBuilder Modify(Stat stat) => new StatModifierBuilder(this, stat);
+
         public void RemoveAllModifiers()
         {
             threadGuard.Verify();
