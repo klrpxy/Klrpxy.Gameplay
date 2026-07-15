@@ -20,6 +20,34 @@ namespace Klrpxy.Gameplay.Stats
         internal static void Execute(Action mutation)
         {
             bool outermost = mutationDepth == 0;
+            bool succeeded = false;
+            mutationDepth++;
+            try
+            {
+                mutation();
+                succeeded = true;
+            }
+            finally
+            {
+                mutationDepth--;
+                if (outermost)
+                {
+                    if (succeeded)
+                    {
+                        CompleteRound();
+                        DrainNotifications();
+                    }
+                    else
+                    {
+                        DiscardRound();
+                    }
+                }
+            }
+        }
+
+        internal static void Rollback(Action mutation)
+        {
+            bool outermost = mutationDepth == 0;
             mutationDepth++;
             try
             {
@@ -28,11 +56,7 @@ namespace Klrpxy.Gameplay.Stats
             finally
             {
                 mutationDepth--;
-                if (outermost)
-                {
-                    CompleteRound();
-                    DrainNotifications();
-                }
+                if (outermost) DiscardRound();
             }
         }
 
@@ -88,6 +112,12 @@ namespace Klrpxy.Gameplay.Stats
                 }
             }
 
+            changes.Clear();
+            changeOrder.Clear();
+        }
+
+        private static void DiscardRound()
+        {
             changes.Clear();
             changeOrder.Clear();
         }

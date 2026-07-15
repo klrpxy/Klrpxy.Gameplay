@@ -147,6 +147,46 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             Assert.Throws<ArgumentNullException>(() => builder.Add(5f));
         }
 
+        [Fact]
+        public void DownstreamFailureRollsBackAllValuesAndEventsBeforeRetry()
+        {
+            var input = new DirectSubject(new DirectStatSet());
+            var updatedBeforeFailure = new DirectSubject(new DirectStatSet());
+            var failing = new DirectSubject(new DirectStatSet());
+            var dependencySource = new ModifierSource();
+            updatedBeforeFailure.AddModifier(
+                Modifier.Flat(
+                    ModifierValue.From(ValueInput.Final(input.StatSet.Health), value => value),
+                    DirectStatSet.HealthKey),
+                dependencySource);
+            failing.AddModifier(
+                Modifier.Multiply(
+                    ModifierValue.From(
+                        ValueInput.Final(input.StatSet.Health),
+                        value => value <= 100f ? 1f : float.MaxValue),
+                    DirectStatSet.HealthKey),
+                dependencySource);
+            var inputChanges = new System.Collections.Generic.List<(float Previous, float Current)>();
+            var dependentChanges = new System.Collections.Generic.List<(float Previous, float Current)>();
+            input.StatSet.Health.OnFinalValueChanged += (previous, current) => inputChanges.Add((previous, current));
+            updatedBeforeFailure.StatSet.Health.OnFinalValueChanged +=
+                (previous, current) => dependentChanges.Add((previous, current));
+            var source = new ModifierSource();
+            StatModifierBuilder builder = source.Modify(input.StatSet.Health);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => builder.Add(5f));
+
+            Assert.Equal(100f, input.StatSet.Health.FinalValue);
+            Assert.Equal(200f, updatedBeforeFailure.StatSet.Health.FinalValue);
+            Assert.Equal(100f, failing.StatSet.Health.FinalValue);
+            Assert.Empty(inputChanges);
+            Assert.Empty(dependentChanges);
+
+            builder.Add(-1f);
+            Assert.Equal(99f, input.StatSet.Health.FinalValue);
+            Assert.Equal(199f, updatedBeforeFailure.StatSet.Health.FinalValue);
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static StatModifierBuilder CreateUnownedBuilder(
             out WeakReference sourceReference,
@@ -163,6 +203,11 @@ namespace KlrpxyGameplayStats.Runtime.Tests
 
         private sealed class DirectStatSet : StatSet
         {
+            public static readonly StatKey<Stat> HealthKey = CreateKey<Stat>(
+                typeof(DirectStatSet),
+                "Tests::DirectStatSet.Health",
+                statSet => ((DirectStatSet)statSet).Health);
+
             public Stat Health { get; } = new Stat(100f);
 
             protected override void AppendGeneratedMembers(System.Collections.Generic.ICollection<StatMemberDescriptor> members)
