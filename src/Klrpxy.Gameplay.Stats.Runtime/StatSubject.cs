@@ -94,7 +94,20 @@ namespace Klrpxy.Gameplay.Stats
                 throw new InvalidOperationException("The Stat target is not declared by this StatSubject.");
             }
 
-            ModifierHandle handle = stat.AddModifier(modifier, source, NextModifierOrder());
+            ModifierHandle handle = null;
+            StatsPropagationCoordinator.Execute(() =>
+            {
+                try
+                {
+                    handle = stat.AddModifier(modifier, source, NextModifierOrder());
+                }
+                catch
+                {
+                    stat.RecalculateForCoordinator();
+                    StatsPropagationCoordinator.DiscardCurrentRound();
+                    throw;
+                }
+            });
             directHandles.Add(handle);
             return handle;
         }

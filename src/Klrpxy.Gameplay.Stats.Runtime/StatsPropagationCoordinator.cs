@@ -20,44 +20,26 @@ namespace Klrpxy.Gameplay.Stats
         internal static void Execute(Action mutation)
         {
             bool outermost = mutationDepth == 0;
-            bool succeeded = false;
             mutationDepth++;
             try
             {
                 mutation();
-                succeeded = true;
             }
             finally
             {
                 mutationDepth--;
                 if (outermost)
                 {
-                    if (succeeded)
-                    {
-                        CompleteRound();
-                        DrainNotifications();
-                    }
-                    else
-                    {
-                        DiscardRound();
-                    }
+                    CompleteRound();
+                    DrainNotifications();
                 }
             }
         }
 
-        internal static void Rollback(Action mutation)
+        internal static void DiscardCurrentRound()
         {
-            bool outermost = mutationDepth == 0;
-            mutationDepth++;
-            try
-            {
-                mutation();
-            }
-            finally
-            {
-                mutationDepth--;
-                if (outermost) DiscardRound();
-            }
+            changes.Clear();
+            changeOrder.Clear();
         }
 
         internal static void RecordChange<T>(object node, Func<Action<T, T>> getListeners, T previous, T current)
@@ -112,12 +94,6 @@ namespace Klrpxy.Gameplay.Stats
                 }
             }
 
-            changes.Clear();
-            changeOrder.Clear();
-        }
-
-        private static void DiscardRound()
-        {
             changes.Clear();
             changeOrder.Clear();
         }

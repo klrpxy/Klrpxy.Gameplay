@@ -165,7 +165,6 @@ namespace Klrpxy.Gameplay.Stats
                 if (modifierAdded) modifiers.Remove(registration);
                 registration.Dispose();
                 if (sourceAdded) source.Remove(handle);
-                if (modifierAdded) StatsPropagationCoordinator.Rollback(Recalculate);
                 throw;
             }
         }
