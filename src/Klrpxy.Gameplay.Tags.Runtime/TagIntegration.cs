@@ -7,6 +7,11 @@ namespace Klrpxy.Gameplay.Tags.Runtime
     {
     }
 
+    public interface IHierarchicalGameplayTag : IGameplayTag
+    {
+        bool IsSameOrDescendantOf(IGameplayTag tag);
+    }
+
     public sealed class TagSetChange
     {
         public TagSetChange(IGameplayTag tag, TagSetChangeKind kind)

@@ -10,7 +10,7 @@ namespace Klrpxy.Gameplay.Stats
         private readonly GameplayThreadGuard threadGuard = new GameplayThreadGuard();
         private bool disposed;
 
-        public void Add(StatSubject subject)
+        public StatSubjectGroup Add(StatSubject subject)
         {
             threadGuard.Verify();
             ThrowIfDisposed();
@@ -32,12 +32,96 @@ namespace Klrpxy.Gameplay.Stats
                     foreach (PreparedRuleTarget item in prepared) item.Rule.Commit(subject, item.Target);
                     Refresh(prepared);
                 });
+                return this;
             }
             catch
             {
                 foreach (PreparedRuleTarget item in prepared) item.Rule.Discard(subject, item.Target);
                 subject.LeaveGroup(this);
                 members.Remove(subject);
+                throw;
+            }
+        }
+
+        public StatSubjectGroup Add(IEnumerable<StatSubject> subjects)
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+            if (subjects == null) throw new ArgumentNullException(nameof(subjects));
+
+            var additions = new List<StatSubject>();
+            foreach (StatSubject subject in subjects)
+            {
+                additions.Add(subject);
+            }
+
+            var unique = new HashSet<StatSubject>();
+            foreach (StatSubject subject in additions)
+            {
+                if (subject == null) throw new ArgumentException("The sequence contains a null StatSubject.", nameof(subjects));
+                if (members.Contains(subject) || !unique.Add(subject))
+                {
+                    throw new InvalidOperationException("The StatSubject already belongs to this group or appears more than once in the sequence.");
+                }
+
+                subject.VerifyCanJoinGroup();
+            }
+
+            var prepared = new List<PreparedBatchSubject>();
+            try
+            {
+                foreach (StatSubject subject in additions)
+                {
+                    var targets = new List<PreparedRuleTarget>();
+                    try
+                    {
+                        foreach (GroupRule rule in rules)
+                        {
+                            targets.Add(new PreparedRuleTarget(rule, rule.Prepare(subject)));
+                        }
+                    }
+                    catch
+                    {
+                        foreach (PreparedRuleTarget target in targets)
+                        {
+                            target.Rule.Discard(subject, target.Target);
+                        }
+
+                        throw;
+                    }
+
+                    prepared.Add(new PreparedBatchSubject(subject, targets));
+                }
+
+                StatsPropagationCoordinator.Execute(() =>
+                {
+                    try
+                    {
+                        foreach (PreparedBatchSubject item in prepared)
+                        {
+                            item.Subject.JoinGroup(this);
+                            members.Add(item.Subject);
+                            foreach (PreparedRuleTarget target in item.Targets)
+                            {
+                                target.Rule.Commit(item.Subject, target.Target);
+                            }
+                        }
+
+                        Refresh(prepared);
+                    }
+                    catch
+                    {
+                        RollBack(prepared);
+                        Refresh(prepared);
+                        StatsPropagationCoordinator.DiscardCurrentRound();
+                        throw;
+                    }
+                });
+                return this;
+            }
+            catch
+            {
+                RollBack(prepared);
                 throw;
             }
         }
@@ -79,8 +163,18 @@ namespace Klrpxy.Gameplay.Stats
                 rules.Add(rule);
                 StatsPropagationCoordinator.Execute(() =>
                 {
-                    foreach (PreparedSubjectTarget item in prepared) rule.Commit(item.Subject, item.Target);
-                    Refresh(prepared);
+                    try
+                    {
+                        foreach (PreparedSubjectTarget item in prepared) rule.Commit(item.Subject, item.Target);
+                        Refresh(prepared);
+                    }
+                    catch
+                    {
+                        handle.RemoveWithoutRefresh();
+                        Refresh(prepared);
+                        StatsPropagationCoordinator.DiscardCurrentRound();
+                        throw;
+                    }
                 });
                 return handle;
             }
@@ -142,6 +236,34 @@ namespace Klrpxy.Gameplay.Stats
                 if (item.Target != null) targets.Add(item.Target.Target);
             }
             StatsPropagationCoordinator.Invalidate(targets);
+        }
+
+        private static void Refresh(List<PreparedBatchSubject> prepared)
+        {
+            var targets = new HashSet<object>();
+            foreach (PreparedBatchSubject subject in prepared)
+            {
+                foreach (PreparedRuleTarget item in subject.Targets)
+                {
+                    if (item.Target != null) targets.Add(item.Target.Target);
+                }
+            }
+
+            StatsPropagationCoordinator.Invalidate(targets);
+        }
+
+        private void RollBack(List<PreparedBatchSubject> prepared)
+        {
+            foreach (PreparedBatchSubject item in prepared)
+            {
+                foreach (PreparedRuleTarget target in item.Targets)
+                {
+                    target.Rule.Discard(item.Subject, target.Target);
+                }
+
+                item.Subject.LeaveGroup(this);
+                members.Remove(item.Subject);
+            }
         }
 
         private static void Refresh(List<PreparedSubjectTarget> prepared)
@@ -315,6 +437,18 @@ namespace Klrpxy.Gameplay.Stats
             internal PreparedSubjectTarget(StatSubject subject, RuleTarget target) { Subject = subject; Target = target; }
             internal StatSubject Subject { get; }
             internal RuleTarget Target { get; }
+        }
+
+        private readonly struct PreparedBatchSubject
+        {
+            internal PreparedBatchSubject(StatSubject subject, List<PreparedRuleTarget> targets)
+            {
+                Subject = subject;
+                Targets = targets;
+            }
+
+            internal StatSubject Subject { get; }
+            internal List<PreparedRuleTarget> Targets { get; }
         }
     }
 }
