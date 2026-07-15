@@ -7,6 +7,9 @@ namespace Klrpxy.Gameplay.Stats
     {
         private readonly IValueInput[] inputs;
         private readonly Func<object[], float> calculate;
+        private readonly bool recoverCalculationFailures;
+        private bool usePreparedValue;
+        private float lastValidValue;
 
         private ModifierValue(IValueInput[] inputs, Func<object[], float> calculate)
         {
@@ -14,11 +17,32 @@ namespace Klrpxy.Gameplay.Stats
             this.calculate = calculate;
         }
 
+        private ModifierValue(IValueInput[] inputs, Func<object[], float> calculate, float initialValue)
+        {
+            this.inputs = inputs;
+            this.calculate = calculate;
+            recoverCalculationFailures = true;
+            usePreparedValue = true;
+            lastValidValue = initialValue;
+        }
+
         public static ModifierValue From<T>(ValueInput<T> input, Func<T, float> calculate)
         {
             if (input == null) throw new ArgumentNullException(nameof(input));
             if (calculate == null) throw new ArgumentNullException(nameof(calculate));
             return new ModifierValue(new IValueInput[] { input }, values => calculate((T)values[0]));
+        }
+
+        internal static ModifierValue FromResilient<T>(ValueInput<T> input, Func<T, float> calculate)
+        {
+            if (input == null) throw new ArgumentNullException(nameof(input));
+            if (calculate == null) throw new ArgumentNullException(nameof(calculate));
+            float initialValue = calculate(input.Read());
+            Modifier.ValidateFinite(initialValue, nameof(calculate));
+            return new ModifierValue(
+                new IValueInput[] { input },
+                values => calculate((T)values[0]),
+                initialValue);
         }
 
         public static ModifierValue From<TFirst, TSecond>(
@@ -53,9 +77,31 @@ namespace Klrpxy.Gameplay.Stats
         {
             var values = new object[inputs.Length];
             for (int index = 0; index < inputs.Length; index++) values[index] = inputs[index].Read();
-            float result = calculate(values);
-            Modifier.ValidateFinite(result, nameof(result));
-            return result;
+            if (!recoverCalculationFailures)
+            {
+                float result = calculate(values);
+                Modifier.ValidateFinite(result, nameof(result));
+                return result;
+            }
+
+            if (usePreparedValue)
+            {
+                usePreparedValue = false;
+                return lastValidValue;
+            }
+
+            try
+            {
+                float result = calculate(values);
+                Modifier.ValidateFinite(result, nameof(result));
+                lastValidValue = result;
+            }
+            catch (Exception exception)
+            {
+                StatsDiagnostics.Report(exception);
+            }
+
+            return lastValidValue;
         }
 
         internal IDisposable Subscribe(Action callback)
