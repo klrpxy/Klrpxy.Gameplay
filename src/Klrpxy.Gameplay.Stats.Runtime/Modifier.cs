@@ -80,6 +80,28 @@ namespace Klrpxy.Gameplay.Stats
 
         public static Modifier Clamp(float minimum, float maximum, StatKey<RangeStat> target, int priority = 0) => CreateClamp(minimum, maximum, target, priority);
 
+        internal static Modifier CreateDirectFlat(float value)
+        {
+            return CreateDirect(ModifierKind.Flat, value, 0, 1f);
+        }
+
+        internal static Modifier CreateDirectPercent(float value) => CreateDirect(ModifierKind.Percent, value, 0, 0.01f);
+
+        internal static Modifier CreateDirectMultiply(float value) => CreateDirect(ModifierKind.Multiply, value, 0, 1f);
+
+        internal static Modifier CreateDirectOverride(float value, int priority) => CreateDirect(ModifierKind.Override, value, priority, 1f);
+
+        internal static Modifier CreateDirectClamp(float minimum, float maximum)
+        {
+            return new Modifier(ModifierKind.Clamp, 0f, null, 1f, CreateClampRange(minimum, maximum), 0, null);
+        }
+
+        private static Modifier CreateDirect(ModifierKind kind, float value, int priority, float scale)
+        {
+            ValidateFinite(value, nameof(value));
+            return new Modifier(kind, value, null, scale, default(FloatRange), priority, null);
+        }
+
         private static Modifier Create<TStat>(ModifierKind kind, float value, StatKey<TStat> target, int priority)
             where TStat : class
         {
