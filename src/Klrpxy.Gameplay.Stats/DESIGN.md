@@ -44,7 +44,7 @@ public sealed partial class EnemyStatSet : CharacterStatSet
     }
 }
 
-public sealed class EnemyInstance : StatsOwner<EnemyStatSet>
+public sealed class EnemyInstance : StatSubject<EnemyStatSet>
 {
     public EnemyInstance()
         : base(
@@ -63,7 +63,7 @@ CharacterStatSet.AttackKey;
 EnemyStatSet.DamageKey;
 ```
 
-Modifier 统一使用生成的 StatKey 指定目标，并可以直接添加到 Owner：
+Modifier 统一使用生成的 StatKey 指定目标，并可以直接添加到 Subject：
 
 ```csharp
 var source = new ModifierSource();
@@ -76,10 +76,10 @@ enemy.StatSet.Health.Decrease(30f);
 enemy.StatSet.Health.Increase(20f);
 ```
 
-Group 可以向不同类型的 Owner 提供共享 Modifier：
+Group 可以向不同类型的 Subject 提供共享 Modifier：
 
 ```csharp
-var battle = new StatsOwnerGroup();
+var battle = new StatSubjectGroup();
 battle.Add(player);
 battle.Add(enemy);
 
@@ -92,14 +92,14 @@ battle.AddModifier(
 
 ## 对象与归属
 
-### StatsOwner 与 StatSet
+### StatSubject 与 StatSet
 
-`StatsOwner<TStatSet>` 恰好拥有一个具体 StatSet 和一个对象级 TagSet。Tag 描述 Gameplay 对象本身，不描述某一个 Stat。
+`StatSubject<TStatSet>` 恰好拥有一个具体 StatSet 和一个对象级 TagSet。Tag 描述 Gameplay 对象本身，不描述某一个 Stat。
 
-Gameplay 对象是纯 C# 对象，可以直接继承 StatsOwner：
+Gameplay 对象是纯 C# 对象，可以直接继承 StatSubject：
 
 ```csharp
-public sealed class EnemyInstance : StatsOwner<EnemyStatSet>
+public sealed class EnemyInstance : StatSubject<EnemyStatSet>
 {
 }
 ```
@@ -110,11 +110,11 @@ MonoBehaviour 主要作为视图层 Adapter，观察并展示 Gameplay Model；S
 
 1. 保存唯一 StatSet。
 2. 创建并初始化 TagSet。
-3. 把 `StatSet.Owner` 一次性绑定到自身。
+3. 把 `StatSet.Subject` 一次性绑定到自身。
 
-`StatSet.Owner` 对外只读且不能更换。已经归属一个 Owner 的 StatSet 不能再交给另一个 Owner。
+`StatSet.Subject` 对外只读且不能更换。已经归属一个 Subject 的 StatSet 不能再交给另一个 Subject。
 
-StatsOwner 实现 `IDisposable`，并作为整个属性模型的唯一生命周期入口。Dispose 会让 Owner 退出全部 Group，移除直接 Modifier 注册，取消 TagSet 与 ValueInput 订阅，并从依赖图移除其数值节点；它不会销毁可能仍影响其他对象的 ModifierSource。StatSet、Stat、RangeStat 和 Resource 不单独公开 Dispose。Owner 结束后继续操作其自身或子对象会抛出 `ObjectDisposedException`，Dispose 过程中不派发数值变化事件。
+StatSubject 实现 `IDisposable`，并作为整个属性模型的唯一生命周期入口。Dispose 会让 Subject 退出全部 Group，移除直接 Modifier 注册，取消 TagSet 与 ValueInput 订阅，并从依赖图移除其数值节点；它不会销毁可能仍影响其他对象的 ModifierSource。StatSet、Stat、RangeStat 和 Resource 不单独公开 Dispose。Subject 结束后继续操作其自身或子对象会抛出 `ObjectDisposedException`，Dispose 过程中不派发数值变化事件。
 
 ### Stat 的对象身份
 
@@ -133,7 +133,7 @@ StatSet 创建后不能替换这些实例。Stat 可以修改 BaseValue、添加
 
 ## StatSet 声明与代码生成
 
-Stats 分为独立的 Runtime 与 Source Generator 程序集。Runtime DLL 包含 `Stat`、`RangeStat`、`Resource`、`StatKey`、Modifier、Owner、Group 和内部传播协调器，并依赖 Tags Runtime；Generator DLL 只依赖 Roslyn，通过符号分析发现 StatSet 并生成引用 Stats Runtime 的源码，生成器自身不加载或调用 Runtime。运行时行为与生成器行为分别测试。这项 module seam 记录在 [ADR 0005](../../docs/adr/0005-separate-stats-runtime-from-generator.md)。
+Stats 分为独立的 Runtime 与 Source Generator 程序集。Runtime DLL 包含 `Stat`、`RangeStat`、`Resource`、`StatKey`、Modifier、Subject、Group 和内部传播协调器，并依赖 Tags Runtime；Generator DLL 只依赖 Roslyn，通过符号分析发现 StatSet 并生成引用 Stats Runtime 的源码，生成器自身不加载或调用 Runtime。运行时行为与生成器行为分别测试。这项 module seam 记录在 [ADR 0005](../../docs/adr/0005-separate-stats-runtime-from-generator.md)。
 
 Stats 作为独立 Unity 安装包发布，只包含 Stats Runtime 与 Stats Analyzer，不复制 Tags DLL。使用者必须先安装 README 和发布说明中标注的最低兼容 Tags 版本；当前 `.unitypackage` 无法自动安装依赖，未来切换到 UPM 时再声明正式包依赖。
 
@@ -160,9 +160,9 @@ StatKey 按目标类型泛化：普通 Stat 生成 `StatKey<Stat>`，RangeStat �
 
 每个生成的 StatKey 保存一个创建后不可变的强类型 getter，用于从声明该 Key 的 StatSet 或其派生实例取得对应的 `Stat` 或 `RangeStat`。运行时先检查目标 StatSet 是否兼容，再通过 getter 定位实例；不兼容的 StatSet 视为不包含该 Key。getter 只负责定位属性，不参与 Modifier 计算或响应式传播，生成器不为每个 StatSet 发射运行时查找 switch。
 
-除公开 Key 外，生成器还为每个 StatSet 生成不可见的只读成员描述，列出该类型自己声明的 `Stat`、`RangeStat` 和 `Resource` 属性；派生类型的描述与基类描述共同组成完整成员集合。Runtime 在绑定 Owner 时使用这些描述完成验证、Owner 绑定、传播注册和清理，不使用反射。`Resource` 仍不生成公开 Key；未来只有在出现按 Key 操作 Resource 的真实需求时才单独设计 `ResourceKey`。
+除公开 Key 外，生成器还为每个 StatSet 生成不可见的只读成员描述，列出该类型自己声明的 `Stat`、`RangeStat` 和 `Resource` 属性；派生类型的描述与基类描述共同组成完整成员集合。Runtime 在绑定 Subject 时使用这些描述完成验证、Subject 绑定、传播注册和清理，不使用反射。`Resource` 仍不生成公开 Key；未来只有在出现按 Key 操作 Resource 的真实需求时才单独设计 `ResourceKey`。
 
-StatSet 绑定到 StatsOwner 时，Runtime 一次性验证完整成员集合：所有成员非空、同一个成员实例没有被多个属性重复引用，并且成员尚未归属其他 Owner。任一检查失败时抛出包含完整属性路径的明确异常；只有全部验证通过后才统一绑定，不能留下部分成员已绑定的状态。
+StatSet 绑定到 StatSubject 时，Runtime 一次性验证完整成员集合：所有成员非空、同一个成员实例没有被多个属性重复引用，并且成员尚未归属其他 Subject。任一检查失败时抛出包含完整属性路径的明确异常；只有全部验证通过后才统一绑定，不能留下部分成员已绑定的状态。
 
 `StatKey<T>` 不提供公开构造函数或公开动态创建方式。生成代码通过 `StatSet` 上受保护的 Key 工厂创建 Key；普通玩法代码不能创建没有真实属性、getter 错误或路径伪造的 Key。派生 StatSet 内部故意调用受保护工厂属于绕过生成器的高级误用，第一版不增加额外机制阻止。
 
@@ -374,7 +374,7 @@ Clamp 可以是永久的 Stat 固有边界，也可以是可移除的临时 Modi
 
 Override 与 Clamp 的默认优先级均为 `0`。数值越大，优先级越高，并且允许负数；`9999` 这类高值由特殊玩法显式指定。
 
-每次把 Modifier 挂载到 Owner 或 Group 时，对应 ModifierHandle 获得一个全局递增且不可变的内部 Order。Priority 相同时，Order 较大者视为最后添加并胜出。Tag 条件启停、Owner 加入已有 Group 或规则暂时不适用都不会改变 Order；只有新的 AddModifier 调用会产生新 Order。
+每次把 Modifier 挂载到 Subject 或 Group 时，对应 ModifierHandle 获得一个全局递增且不可变的内部 Order。Priority 相同时，Order 较大者视为最后添加并胜出。Tag 条件启停、Subject 加入已有 Group 或规则暂时不适用都不会改变 Order；只有新的 AddModifier 调用会产生新 Order。
 
 ### 单值 Stat 的完整计算顺序
 
@@ -428,7 +428,7 @@ BaseValue 输入不形成最终值计算环。`FinalValue`、`FinalRange`、`Res
 
 ### Modifier、ModifierHandle 与 ModifierSource
 
-Modifier 是不可变的计算规则；把它添加到 StatsOwner 或 StatsOwnerGroup 后，会产生一个 ModifierHandle：
+Modifier 是不可变的计算规则；把它添加到 StatSubject 或 StatSubjectGroup 后，会产生一个 ModifierHandle：
 
 ```csharp
 Modifier modifier = Modifier.Flat(
@@ -440,7 +440,7 @@ ModifierHandle handle = enemy.AddModifier(
     source);
 ```
 
-同一个 Modifier 添加到三个目标，会产生三个不同的 ModifierHandle。Owner Handle 表示一条直接注册；Group Handle 表示 Group 中保存的一条共享规则，不会为每个成员复制 Handle。ModifierSource 表示产生这些 Modifier 的同一个玩法来源，例如装备、技能、Buff 或光环实例。
+同一个 Modifier 添加到三个目标，会产生三个不同的 ModifierHandle。Subject Handle 表示一条直接注册；Group Handle 表示 Group 中保存的一条共享规则，不会为每个成员复制 Handle。ModifierSource 表示产生这些 Modifier 的同一个玩法来源，例如装备、技能、Buff 或光环实例。
 
 ### 清理规则
 
@@ -448,7 +448,7 @@ ModifierHandle 和 ModifierSource 都实现 `IDisposable`，重复清理安全�
 
 ```text
 ModifierHandle.Dispose()
-    移除一次 Owner 注册或一条 Group 规则
+    移除一次 Subject 注册或一条 Group 规则
 
 ModifierSource.RemoveAllModifiers()
     移除当前全部 Modifier，但 Source 之后仍可复用
@@ -489,27 +489,27 @@ tags.Remove(tag); // 不存在，不通知
 
 事件参数为不可变的 `TagSetChange { Tag, Kind }`，Kind 取 `Added` 或 `Removed`。事件不携带完整集合；未来 Clear 为每个实际移除的 Tag 分别派发 Removed。
 
-StatsOwner 在构造时订阅自己的 TagSet。`AddTag()` 与 `RemoveTag()` 是便捷方法；直接调用 `owner.Tags.Add()` 或 `Remove()` 也能触发条件 Modifier 重新判断。依赖方向保持为 `Stats -> Tags`。
+StatSubject 在构造时订阅自己的 TagSet。`AddTag()` 与 `RemoveTag()` 是便捷方法；直接调用 `subject.Tags.Add()` 或 `Remove()` 也能触发条件 Modifier 重新判断。依赖方向保持为 `Stats -> Tags`。
 
-## StatsOwnerGroup
+## StatSubjectGroup
 
 ### 异构成员
 
-StatsOwnerGroup 保存不同具体 StatSet 类型的 StatsOwner：
+StatSubjectGroup 保存不同具体 StatSet 类型的 StatSubject：
 
 ```csharp
-var battle = new StatsOwnerGroup();
+var battle = new StatSubjectGroup();
 
 battle.Add(player);
 battle.Add(enemy);
 battle.Add(summon);
 ```
 
-Group Modifier 只应用于拥有目标 StatKey 且满足 TagQuery 的成员；不包含目标 Key 的成员正常跳过。同一个 Owner 在同一个 Group 中最多出现一次。
+Group Modifier 只应用于拥有目标 StatKey 且满足 TagQuery 的成员；不包含目标 Key 的成员正常跳过。同一个 Subject 在同一个 Group 中最多出现一次。
 
 ### 多 Group 归属
 
-一个 Owner 可以同时属于多个 Group：
+一个 Subject 可以同时属于多个 Group：
 
 ```text
 enemy
@@ -519,11 +519,11 @@ enemy
 └── HardDifficultyGroup
 ```
 
-不同 Group 提供的 Modifier 是独立贡献，即使引用同一个 Modifier 定义也正常叠加。Owner 离开一个 Group 时，只停止收集该 Group 的 Modifier；其他 Group 和本地 Modifier 不受影响。
+不同 Group 提供的 Modifier 是独立贡献，即使引用同一个 Modifier 定义也正常叠加。Subject 离开一个 Group 时，只停止收集该 Group 的 Modifier；其他 Group 和本地 Modifier 不受影响。
 
 ### Group Modifier 聚合
 
-Group Modifier 只在 Group 中保存一份，不复制成每个成员的直接注册。计算 Stat 时，Owner 收集自己的 Modifier 和所属 Group 中适用于自己的 Modifier，并按相同阶段统一聚合：
+Group Modifier 只在 Group 中保存一份，不复制成每个成员的直接注册。计算 Stat 时，Subject 收集自己的 Modifier 和所属 Group 中适用于自己的 Modifier，并按相同阶段统一聚合：
 
 ```text
 所有本地与 Group Flat
@@ -533,11 +533,11 @@ Group Modifier 只在 Group 中保存一份，不复制成每个成员的直接�
 -> 合并全部 Clamp
 ```
 
-不会先完整计算 Group 再计算 Owner，因为 Modifier 来源不应改变数学结果。
+不会先完整计算 Group 再计算 Subject，因为 Modifier 来源不应改变数学结果。
 
-后续加入的成员自动考虑 Group 当前的 Modifier。成员离开时停止接收 Group 贡献。Group 添加、移除 Modifier 或成员关系变化时，通知受影响的 Owner 重新计算。
+后续加入的成员自动考虑 Group 当前的 Modifier。成员离开时停止接收 Group 贡献。Group 添加、移除 Modifier 或成员关系变化时，通知受影响的 Subject 重新计算。
 
-StatsOwnerGroup 实现 `IDisposable`。Dispose 会解除所有成员关系、移除全部 Group Modifier 规则、让对应 Handle 从 Source 注销，并通知仍存活的成员重算；Group 不拥有也不会销毁成员 Owner。Group 结束后继续 Add、Remove 或 AddModifier 会抛出 `ObjectDisposedException`。
+StatSubjectGroup 实现 `IDisposable`。Dispose 会解除所有成员关系、移除全部 Group Modifier 规则、让对应 Handle 从 Source 注销，并通知仍存活的成员重算；Group 不拥有也不会销毁成员 Subject。Group 结束后继续 Add、Remove 或 AddModifier 会抛出 `ObjectDisposedException`。
 
 ## 更新、事件与错误
 
@@ -562,7 +562,7 @@ rangeStat.OnFinalRangeChanged += (previous, current) => { };
 
 ### 事件传播与重入
 
-Stats 模块内部的传播协调器统一拥有依赖图、循环检测、受影响数值重算、FIFO 事件派发与订阅清理。`Stat`、`RangeStat`、`Resource`、`StatsOwner` 和 `StatsOwnerGroup` 只报告自身变化并呈现协调器完成传播后的最终状态，不自行协调彼此的更新顺序。这项边界决定记录在 [ADR 0004](../../docs/adr/0004-internal-stats-propagation-coordinator.md)。
+Stats 模块内部的传播协调器统一拥有依赖图、循环检测、受影响数值重算、FIFO 事件派发与订阅清理。`Stat`、`RangeStat`、`Resource`、`StatSubject` 和 `StatSubjectGroup` 只报告自身变化并呈现协调器完成传播后的最终状态，不自行协调彼此的更新顺序。这项边界决定记录在 [ADR 0004](../../docs/adr/0004-internal-stats-propagation-coordinator.md)。
 
 每次公开修改操作开启一轮传播，包括修改 `BaseValue`、添加或移除 Modifier、TagSet 变化、Group 成员变化以及外部 `ValueInput` 通知。该操作引起的全部依赖重算和内部步骤属于同一轮；`RemoveAllModifiers()` 与 Group 规则批量清理等完整操作无论内部处理多少项，也只算一轮。事件回调中再次调用公开修改 API 会开启新一轮，并把新事件追加到 FIFO 队尾。最外层修改方法等待全部轮次与事件队列处理完成后才返回；第一版不公开 `BeginBatch()` 或 `DeferRefresh()`。
 
@@ -589,7 +589,7 @@ Stats 核心通过全局 `StatsDiagnostics.EventExceptionHandler` 报告监听�
 → 队列排空后返回
 ```
 
-事件队列是同一 Gameplay 线程内的内部实现，不是跨线程、跨帧或公开的命令队列。第一版由当前 Gameplay 线程共享同一个内部事件循环，使不同 StatsOwner、StatsOwnerGroup 和跨 Owner 动态依赖产生的事件也不会互相嵌套。
+事件队列是同一 Gameplay 线程内的内部实现，不是跨线程、跨帧或公开的命令队列。第一版由当前 Gameplay 线程共享同一个内部事件循环，使不同 StatSubject、StatSubjectGroup 和跨 Subject 动态依赖产生的事件也不会互相嵌套。
 
 Stat、RangeStat 和 Resource 的公开构造方式不接收 Dispatcher。Stats 模块也不公开 StatsContext；事件循环依赖由模块内部提供，避免把通知机制暴露给 StatSet 定义。将来只有在确实需要多个隔离的模拟世界或多线程 Stats 模型时，才重新考虑显式 Context。
 
@@ -599,13 +599,13 @@ BaseValue、ModifierValue 和计算结果都不允许 NaN 或正负无穷；遇�
 
 ## 性能约束
 
-Owner 的直接 Modifier 与 Group Modifier 都按 StatKey 建索引。FinalValue 保存已计算结果；只有 Modifier、Tag、成员关系或动态输入变化时才重新计算，不在每帧或每次读取时扫描 Group。
+Subject 的直接 Modifier 与 Group Modifier 都按 StatKey 建索引。FinalValue 保存已计算结果；只有 Modifier、Tag、成员关系或动态输入变化时才重新计算，不在每帧或每次读取时扫描 Group。
 
 Group 变化时遍历可能受影响的成员，并通过目标 Key 与 TagQuery 过滤。第一版不缓存本地与多个 Group 的合并 Modifier 列表；如果基准测试发现瓶颈，可以在不改变外部 interface 的前提下增加内部缓存。
 
 ## 线程约束
 
-第一版明确为单线程模型，不提供内部锁。StatsOwner、StatSet、Stat、RangeStat、Resource、ModifierSource 和 StatsOwnerGroup 的创建与修改，以及外部 ValueInput 的变化通知，都必须发生在同一 Gameplay 线程。对象第一次接入传播系统时记录当前线程；所有构建都会检查后续修改是否来自同一线程，错误线程调用立即抛出明确异常。该异常表示 API 使用错误，不由 `StatsDiagnostics.EventExceptionHandler` 捕获。
+第一版明确为单线程模型，不提供内部锁。StatSubject、StatSet、Stat、RangeStat、Resource、ModifierSource 和 StatSubjectGroup 的创建与修改，以及外部 ValueInput 的变化通知，都必须发生在同一 Gameplay 线程。对象第一次接入传播系统时记录当前线程；所有构建都会检查后续修改是否来自同一线程，错误线程调用立即抛出明确异常。该异常表示 API 使用错误，不由 `StatsDiagnostics.EventExceptionHandler` 捕获。
 
 变化与依赖事件在当前 Gameplay 线程串行派发，并在最外层修改方法返回前完成。事件回调造成的新通知进入内部事件队列，不进行嵌套派发。未来如需后台计算，通过不可变快照或命令队列 Adapter 把结果交回 Gameplay 线程应用。
 

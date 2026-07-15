@@ -4,12 +4,12 @@ using Klrpxy.Gameplay.Tags.Runtime;
 
 namespace Klrpxy.Gameplay.Stats
 {
-    internal sealed class OwnerTagSet : ITagSet
+    internal sealed class SubjectTagSet : ITagSet
     {
         private readonly HashSet<IGameplayTag> tags = new HashSet<IGameplayTag>();
         private readonly Action verifyAccess;
 
-        internal OwnerTagSet(Action verifyAccess) => this.verifyAccess = verifyAccess;
+        internal SubjectTagSet(Action verifyAccess) => this.verifyAccess = verifyAccess;
 
         public event Action<TagSetChange> OnChanged;
 

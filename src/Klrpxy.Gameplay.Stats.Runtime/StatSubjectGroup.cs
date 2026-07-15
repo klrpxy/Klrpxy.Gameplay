@@ -3,51 +3,51 @@ using System.Collections.Generic;
 
 namespace Klrpxy.Gameplay.Stats
 {
-    public sealed class StatsOwnerGroup : IDisposable
+    public sealed class StatSubjectGroup : IDisposable
     {
-        private readonly HashSet<StatsOwner> members = new HashSet<StatsOwner>();
+        private readonly HashSet<StatSubject> members = new HashSet<StatSubject>();
         private readonly List<GroupRule> rules = new List<GroupRule>();
         private readonly GameplayThreadGuard threadGuard = new GameplayThreadGuard();
         private bool disposed;
 
-        public void Add(StatsOwner owner)
+        public void Add(StatSubject subject)
         {
             threadGuard.Verify();
             ThrowIfDisposed();
-            if (owner == null) throw new ArgumentNullException(nameof(owner));
-            if (members.Contains(owner)) throw new InvalidOperationException("The StatsOwner already belongs to this group.");
+            if (subject == null) throw new ArgumentNullException(nameof(subject));
+            if (members.Contains(subject)) throw new InvalidOperationException("The StatSubject already belongs to this group.");
 
             var prepared = new List<PreparedRuleTarget>();
             try
             {
                 foreach (GroupRule rule in rules)
                 {
-                    prepared.Add(new PreparedRuleTarget(rule, rule.Prepare(owner)));
+                    prepared.Add(new PreparedRuleTarget(rule, rule.Prepare(subject)));
                 }
 
-                owner.JoinGroup(this);
-                members.Add(owner);
+                subject.JoinGroup(this);
+                members.Add(subject);
                 StatsPropagationCoordinator.Execute(() =>
                 {
-                    foreach (PreparedRuleTarget item in prepared) item.Rule.Commit(owner, item.Target);
+                    foreach (PreparedRuleTarget item in prepared) item.Rule.Commit(subject, item.Target);
                     Refresh(prepared);
                 });
             }
             catch
             {
-                foreach (PreparedRuleTarget item in prepared) item.Rule.Discard(owner, item.Target);
-                owner.LeaveGroup(this);
-                members.Remove(owner);
+                foreach (PreparedRuleTarget item in prepared) item.Rule.Discard(subject, item.Target);
+                subject.LeaveGroup(this);
+                members.Remove(subject);
                 throw;
             }
         }
 
-        public bool Remove(StatsOwner owner)
+        public bool Remove(StatSubject subject)
         {
             threadGuard.Verify();
             ThrowIfDisposed();
-            if (owner == null) throw new ArgumentNullException(nameof(owner));
-            return Remove(owner, true);
+            if (subject == null) throw new ArgumentNullException(nameof(subject));
+            return Remove(subject, true);
         }
 
         public ModifierHandle AddModifier(Modifier modifier, ModifierSource source)
@@ -58,14 +58,14 @@ namespace Klrpxy.Gameplay.Stats
             if (source == null) throw new ArgumentNullException(nameof(source));
             source.ThrowIfDisposed();
 
-            var rule = new GroupRule(modifier, StatsOwner.NextModifierOrder());
-            var prepared = new List<PreparedOwnerTarget>();
+            var rule = new GroupRule(modifier, StatSubject.NextModifierOrder());
+            var prepared = new List<PreparedSubjectTarget>();
             ModifierHandle handle = null;
             try
             {
-                foreach (StatsOwner member in members)
+                foreach (StatSubject member in members)
                 {
-                    prepared.Add(new PreparedOwnerTarget(member, rule.Prepare(member)));
+                    prepared.Add(new PreparedSubjectTarget(member, rule.Prepare(member)));
                 }
 
                 rule.Subscribe();
@@ -79,7 +79,7 @@ namespace Klrpxy.Gameplay.Stats
                 rules.Add(rule);
                 StatsPropagationCoordinator.Execute(() =>
                 {
-                    foreach (PreparedOwnerTarget item in prepared) rule.Commit(item.Owner, item.Target);
+                    foreach (PreparedSubjectTarget item in prepared) rule.Commit(item.Subject, item.Target);
                     Refresh(prepared);
                 });
                 return handle;
@@ -104,33 +104,33 @@ namespace Klrpxy.Gameplay.Stats
             StatsPropagationCoordinator.Execute(() =>
             {
                 foreach (GroupRule rule in new List<GroupRule>(rules)) rule.Handle.Dispose();
-                foreach (StatsOwner member in new List<StatsOwner>(members)) Remove(member, true);
+                foreach (StatSubject member in new List<StatSubject>(members)) Remove(member, true);
             });
         }
 
-        internal void RemoveDisposedOwner(StatsOwner owner) => Remove(owner, false);
+        internal void RemoveDisposedSubject(StatSubject subject) => Remove(subject, false);
 
-        internal void TagsChanged(StatsOwner owner)
+        internal void TagsChanged(StatSubject subject)
         {
-            foreach (GroupRule rule in rules) rule.Update(owner);
+            foreach (GroupRule rule in rules) rule.Update(subject);
         }
 
-        internal void AppendModifiers(StatsOwner owner, object target, List<IModifierEntry> result)
+        internal void AppendModifiers(StatSubject subject, object target, List<IModifierEntry> result)
         {
             foreach (GroupRule rule in rules)
             {
-                if (rule.AppliesTo(owner, target)) result.Add(rule);
+                if (rule.AppliesTo(subject, target)) result.Add(rule);
             }
         }
 
-        private bool Remove(StatsOwner owner, bool refresh)
+        private bool Remove(StatSubject subject, bool refresh)
         {
-            if (!members.Remove(owner)) return false;
+            if (!members.Remove(subject)) return false;
             StatsPropagationCoordinator.Execute(() =>
             {
-                foreach (GroupRule rule in rules) rule.Detach(owner, refresh);
+                foreach (GroupRule rule in rules) rule.Detach(subject, refresh);
             });
-            owner.LeaveGroup(this);
+            subject.LeaveGroup(this);
             return true;
         }
 
@@ -144,10 +144,10 @@ namespace Klrpxy.Gameplay.Stats
             StatsPropagationCoordinator.Invalidate(targets);
         }
 
-        private static void Refresh(List<PreparedOwnerTarget> prepared)
+        private static void Refresh(List<PreparedSubjectTarget> prepared)
         {
             var targets = new HashSet<object>();
-            foreach (PreparedOwnerTarget item in prepared)
+            foreach (PreparedSubjectTarget item in prepared)
             {
                 if (item.Target != null) targets.Add(item.Target.Target);
             }
@@ -156,12 +156,12 @@ namespace Klrpxy.Gameplay.Stats
 
         private void ThrowIfDisposed()
         {
-            if (disposed) throw new ObjectDisposedException(nameof(StatsOwnerGroup));
+            if (disposed) throw new ObjectDisposedException(nameof(StatSubjectGroup));
         }
 
         private sealed class GroupRule : IModifierEntry
         {
-            private readonly Dictionary<StatsOwner, RuleTarget> targets = new Dictionary<StatsOwner, RuleTarget>();
+            private readonly Dictionary<StatSubject, RuleTarget> targets = new Dictionary<StatSubject, RuleTarget>();
             private readonly HashSet<object> removedTargets = new HashSet<object>();
             private IDisposable subscription;
 
@@ -177,10 +177,10 @@ namespace Klrpxy.Gameplay.Stats
 
             internal ModifierHandle Handle { get; set; }
 
-            internal RuleTarget Prepare(StatsOwner owner)
+            internal RuleTarget Prepare(StatSubject subject)
             {
-                if (Modifier.TargetCondition != null && !Modifier.TargetCondition.Matches(owner.Tags)) return null;
-                if (!owner.TryGetModifierTarget(Modifier, out object target)) return null;
+                if (Modifier.TargetCondition != null && !Modifier.TargetCondition.Matches(subject.Tags)) return null;
+                if (!subject.TryGetModifierTarget(Modifier, out object target)) return null;
                 IDisposable dependency = Modifier.DynamicValue == null
                     ? null
                     : StatsPropagationCoordinator.AddDependencies(Modifier.DynamicValue.DependencyNodes, target);
@@ -192,16 +192,16 @@ namespace Klrpxy.Gameplay.Stats
                 if (Modifier.DynamicValue != null) subscription = Modifier.DynamicValue.Subscribe(RefreshAll);
             }
 
-            internal void Commit(StatsOwner owner, RuleTarget target)
+            internal void Commit(StatSubject subject, RuleTarget target)
             {
-                if (target != null) targets.Add(owner, target);
+                if (target != null) targets.Add(subject, target);
             }
 
-            internal void Discard(StatsOwner owner, RuleTarget prepared)
+            internal void Discard(StatSubject subject, RuleTarget prepared)
             {
-                if (targets.TryGetValue(owner, out RuleTarget committed))
+                if (targets.TryGetValue(subject, out RuleTarget committed))
                 {
-                    targets.Remove(owner);
+                    targets.Remove(subject);
                     committed.Dispose();
                     return;
                 }
@@ -209,18 +209,18 @@ namespace Klrpxy.Gameplay.Stats
                 prepared?.Dispose();
             }
 
-            internal bool AppliesTo(StatsOwner owner, object target)
+            internal bool AppliesTo(StatSubject subject, object target)
             {
-                return targets.TryGetValue(owner, out RuleTarget state) && ReferenceEquals(state.Target, target);
+                return targets.TryGetValue(subject, out RuleTarget state) && ReferenceEquals(state.Target, target);
             }
 
-            internal void Update(StatsOwner owner)
+            internal void Update(StatSubject subject)
             {
-                bool matches = Modifier.TargetCondition == null || Modifier.TargetCondition.Matches(owner.Tags);
-                if (matches && !targets.ContainsKey(owner))
+                bool matches = Modifier.TargetCondition == null || Modifier.TargetCondition.Matches(subject.Tags);
+                if (matches && !targets.ContainsKey(subject))
                 {
-                    RuleTarget target = Prepare(owner);
-                    Commit(owner, target);
+                    RuleTarget target = Prepare(subject);
+                    Commit(subject, target);
                     if (target != null)
                     {
                         try
@@ -229,21 +229,21 @@ namespace Klrpxy.Gameplay.Stats
                         }
                         catch
                         {
-                            Discard(owner, target);
+                            Discard(subject, target);
                             throw;
                         }
                     }
                 }
                 else if (!matches)
                 {
-                    Detach(owner, true);
+                    Detach(subject, true);
                 }
             }
 
-            internal void Detach(StatsOwner owner, bool refresh)
+            internal void Detach(StatSubject subject, bool refresh)
             {
-                if (!targets.TryGetValue(owner, out RuleTarget target)) return;
-                targets.Remove(owner);
+                if (!targets.TryGetValue(subject, out RuleTarget target)) return;
+                targets.Remove(subject);
                 target.Dispose();
                 if (refresh) StatsPropagationCoordinator.Invalidate(target.Target);
             }
@@ -272,9 +272,9 @@ namespace Klrpxy.Gameplay.Stats
                 StatsPropagationCoordinator.Invalidate(nodes);
             }
 
-            internal void DisposePrepared(List<PreparedOwnerTarget> prepared)
+            internal void DisposePrepared(List<PreparedSubjectTarget> prepared)
             {
-                foreach (PreparedOwnerTarget item in prepared) item.Target?.Dispose();
+                foreach (PreparedSubjectTarget item in prepared) item.Target?.Dispose();
             }
 
             internal void DisposeSubscription()
@@ -310,10 +310,10 @@ namespace Klrpxy.Gameplay.Stats
             internal RuleTarget Target { get; }
         }
 
-        private readonly struct PreparedOwnerTarget
+        private readonly struct PreparedSubjectTarget
         {
-            internal PreparedOwnerTarget(StatsOwner owner, RuleTarget target) { Owner = owner; Target = target; }
-            internal StatsOwner Owner { get; }
+            internal PreparedSubjectTarget(StatSubject subject, RuleTarget target) { Subject = subject; Target = target; }
+            internal StatSubject Subject { get; }
             internal RuleTarget Target { get; }
         }
     }

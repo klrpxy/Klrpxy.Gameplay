@@ -5,136 +5,136 @@ using Xunit;
 
 namespace KlrpxyGameplayStats.Runtime.Tests
 {
-    public sealed class StatsOwnerTests
+    public sealed class StatSubjectTests
     {
         [Fact]
-        public void OwnerBindsProvidedStatSet()
+        public void SubjectBindsProvidedStatSet()
         {
-            // 验证创建 StatsOwner 时会把传入的 StatSet 绑定到该 Owner。
+            // 验证创建 StatSubject 时会把传入的 StatSet 绑定到该 Subject。
             var statSet = new TestStatSet();
 
-            var owner = new TestOwner(statSet);
+            var subject = new TestSubject(statSet);
 
-            Assert.Same(owner, statSet.Owner);
+            Assert.Same(subject, statSet.Subject);
         }
 
         [Fact]
-        public void StatSetCannotBeBoundToSecondOwner()
+        public void StatSetCannotBeBoundToSecondSubject()
         {
-            // 验证已绑定的 StatSet 不能再次交给另一个 StatsOwner。
+            // 验证已绑定的 StatSet 不能再次交给另一个 StatSubject。
             var statSet = new TestStatSet();
-            _ = new TestOwner(statSet);
+            _ = new TestSubject(statSet);
 
-            Assert.Throws<InvalidOperationException>(() => new TestOwner(statSet));
+            Assert.Throws<InvalidOperationException>(() => new TestSubject(statSet));
         }
 
         [Fact]
-        public void OwnerRejectsMissingStatSet()
+        public void SubjectRejectsMissingStatSet()
         {
-            // 验证创建 StatsOwner 时必须提供非空 StatSet。
-            Assert.Throws<ArgumentNullException>(() => new TestOwner(null));
+            // 验证创建 StatSubject 时必须提供非空 StatSet。
+            Assert.Throws<ArgumentNullException>(() => new TestSubject(null));
         }
 
         [Fact]
-        public void OwnerRejectsNullGeneratedMemberWithItsPath()
+        public void SubjectRejectsNullGeneratedMemberWithItsPath()
         {
             // 验证绑定 StatSet 时会拒绝空成员，并在错误中指出声明路径。
             var statSet = new NullMemberStatSet();
 
-            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => new NullMemberOwner(statSet));
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => new NullMemberSubject(statSet));
 
             Assert.Contains("Game::Combat.NullMemberStatSet.Health", exception.Message);
-            Assert.Null(statSet.Owner);
+            Assert.Null(statSet.Subject);
         }
 
         [Fact]
-        public void OwnerRejectsMemberAlreadyBoundToAnotherStatSet()
+        public void SubjectRejectsMemberAlreadyBoundToAnotherStatSet()
         {
             // 验证一个成员实例不能被两个不同的 StatSet 绑定。
             var health = new Stat(100f);
-            _ = new SharedMemberOwner(new SharedMemberStatSet(health));
+            _ = new SharedMemberSubject(new SharedMemberStatSet(health));
 
-            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => new SharedMemberOwner(new SharedMemberStatSet(health)));
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => new SharedMemberSubject(new SharedMemberStatSet(health)));
 
             Assert.Contains("Game::Combat.SharedMemberStatSet.Health", exception.Message);
         }
 
         [Fact]
-        public void OwnerRejectsDuplicateGeneratedMemberWithoutBindingStatSet()
+        public void SubjectRejectsDuplicateGeneratedMemberWithoutBindingStatSet()
         {
             // 验证同一成员被两个属性引用时，绑定失败且 StatSet 保持未归属。
             var statSet = new DuplicateMemberStatSet(new Stat(100f));
 
-            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => new DuplicateMemberOwner(statSet));
+            InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => new DuplicateMemberSubject(statSet));
 
             Assert.Contains("Game::Combat.DuplicateMemberStatSet.Attack", exception.Message);
-            Assert.Null(statSet.Owner);
+            Assert.Null(statSet.Subject);
         }
 
         [Fact]
-        public void OwnerDisposeRemovesDirectModifiersWithoutPublishingChanges()
+        public void SubjectDisposeRemovesDirectModifiersWithoutPublishingChanges()
         {
-            // 验证 Owner 重复结束时静默移除直接 Modifier，并拒绝后续新增操作。
-            var owner = new LifecycleOwner(new LifecycleStatSet());
+            // 验证 Subject 重复结束时静默移除直接 Modifier，并拒绝后续新增操作。
+            var subject = new LifecycleSubject(new LifecycleStatSet());
             var source = new ModifierSource();
-            owner.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), source);
+            subject.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), source);
             var eventCount = 0;
-            owner.StatSet.Health.OnFinalValueChanged += (previous, current) => eventCount++;
+            subject.StatSet.Health.OnFinalValueChanged += (previous, current) => eventCount++;
 
-            owner.Dispose();
-            owner.Dispose();
+            subject.Dispose();
+            subject.Dispose();
             source.RemoveAllModifiers();
 
             Assert.Equal(0, eventCount);
             Assert.Throws<ObjectDisposedException>(() =>
-                owner.AddModifier(Modifier.Flat(10f, LifecycleStatSet.HealthKey), source));
+                subject.AddModifier(Modifier.Flat(10f, LifecycleStatSet.HealthKey), source));
         }
 
         [Fact]
-        public void ConditionalOwnerModifierRejectsAnIncompatibleKeyBeforeRegistration()
+        public void ConditionalSubjectModifierRejectsAnIncompatibleKeyBeforeRegistration()
         {
-            // 验证条件当前不匹配时，Owner 仍会原子拒绝不属于自身 StatSet 的 Key。
-            var owner = new LifecycleOwner(new LifecycleStatSet());
+            // 验证条件当前不匹配时，Subject 仍会原子拒绝不属于自身 StatSet 的 Key。
+            var subject = new LifecycleSubject(new LifecycleStatSet());
             var source = new ModifierSource();
             Modifier modifier = Modifier.Flat(10f, RangeTestStatSet.DamageKey)
                 .WhenTargetMatches(new NeverMatchesQuery());
 
-            Assert.Throws<InvalidOperationException>(() => owner.AddModifier(modifier, source));
+            Assert.Throws<InvalidOperationException>(() => subject.AddModifier(modifier, source));
 
             source.RemoveAllModifiers();
-            Assert.Equal(100f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(100f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
-        public void OwnerDisposeEndsOwnedStatOperations()
+        public void SubjectDisposeEndsOwnedStatOperations()
         {
-            // 验证 Owner 结束后对其 Stat 的后续修改会立即失败。
-            var owner = new LifecycleOwner(new LifecycleStatSet());
+            // 验证 Subject 结束后对其 Stat 的后续修改会立即失败。
+            var subject = new LifecycleSubject(new LifecycleStatSet());
 
-            owner.Dispose();
+            subject.Dispose();
 
-            Assert.Throws<ObjectDisposedException>(() => owner.StatSet.Health.BaseValue = 50f);
+            Assert.Throws<ObjectDisposedException>(() => subject.StatSet.Health.BaseValue = 50f);
         }
 
         [Fact]
-        public void OwnerDisposeEndsOwnedRangeAndResourceOperations()
+        public void SubjectDisposeEndsOwnedRangeAndResourceOperations()
         {
-            // 验证 Owner 结束后对其 RangeStat 和 Resource 的后续修改会立即失败。
-            var owner = new LifecycleOwner(new LifecycleStatSet());
+            // 验证 Subject 结束后对其 RangeStat 和 Resource 的后续修改会立即失败。
+            var subject = new LifecycleSubject(new LifecycleStatSet());
 
-            owner.Dispose();
+            subject.Dispose();
 
-            Assert.Throws<ObjectDisposedException>(() => owner.StatSet.Damage.WithBounds(0f, 10f));
-            Assert.Throws<ObjectDisposedException>(() => owner.StatSet.Mana.Set(20f));
+            Assert.Throws<ObjectDisposedException>(() => subject.StatSet.Damage.WithBounds(0f, 10f));
+            Assert.Throws<ObjectDisposedException>(() => subject.StatSet.Mana.Set(20f));
         }
 
         [Fact]
         public void GroupRuleAffectsExistingAndLaterMembersUntilTheyLeave()
         {
             // 验证 Group 中的一份共享规则自动影响现有与后加入成员，离开后自动撤销。
-            var first = new LifecycleOwner(new LifecycleStatSet());
-            var second = new LifecycleOwner(new LifecycleStatSet());
-            var group = new StatsOwnerGroup();
+            var first = new LifecycleSubject(new LifecycleStatSet());
+            var second = new LifecycleSubject(new LifecycleStatSet());
+            var group = new StatSubjectGroup();
             var source = new ModifierSource();
             group.Add(first);
 
@@ -154,63 +154,63 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         public void GroupAppliesRangeRuleOnlyToCompatibleHeterogeneousMembers()
         {
             // 验证异构 Group 只对包含目标 RangeStat Key 的成员应用共享规则。
-            var scalarOwner = new LifecycleOwner(new LifecycleStatSet());
-            var rangeOwner = new RangeTestOwner(new RangeTestStatSet());
-            var group = new StatsOwnerGroup();
+            var scalarSubject = new LifecycleSubject(new LifecycleStatSet());
+            var rangeSubject = new RangeTestSubject(new RangeTestStatSet());
+            var group = new StatSubjectGroup();
             var source = new ModifierSource();
-            group.Add(scalarOwner);
-            group.Add(rangeOwner);
+            group.Add(scalarSubject);
+            group.Add(rangeSubject);
 
             group.AddModifier(Modifier.Flat(5f, RangeTestStatSet.DamageKey), source);
 
-            Assert.Equal(100f, scalarOwner.StatSet.Health.FinalValue);
+            Assert.Equal(100f, scalarSubject.StatSet.Health.FinalValue);
             Assert.Equal(
                 (15f, 20f),
-                (rangeOwner.StatSet.Damage.FinalRange.Min, rangeOwner.StatSet.Damage.FinalRange.Max));
+                (rangeSubject.StatSet.Damage.FinalRange.Min, rangeSubject.StatSet.Damage.FinalRange.Max));
         }
 
         [Fact]
         public void LocalAndMultipleGroupRulesShareOneCalculationPipeline()
         {
             // 验证本地与多个 Group 的 Modifier 在同一计算阶段聚合。
-            var owner = new LifecycleOwner(new LifecycleStatSet());
+            var subject = new LifecycleSubject(new LifecycleStatSet());
             var localSource = new ModifierSource();
             var firstGroupSource = new ModifierSource();
             var secondGroupSource = new ModifierSource();
-            var firstGroup = new StatsOwnerGroup();
-            var secondGroup = new StatsOwnerGroup();
-            firstGroup.Add(owner);
-            secondGroup.Add(owner);
+            var firstGroup = new StatSubjectGroup();
+            var secondGroup = new StatSubjectGroup();
+            firstGroup.Add(subject);
+            secondGroup.Add(subject);
 
-            owner.AddModifier(Modifier.Flat(10f, LifecycleStatSet.HealthKey), localSource);
+            subject.AddModifier(Modifier.Flat(10f, LifecycleStatSet.HealthKey), localSource);
             firstGroup.AddModifier(Modifier.Flat(20f, LifecycleStatSet.HealthKey), firstGroupSource);
             secondGroup.AddModifier(Modifier.Percent(50f, LifecycleStatSet.HealthKey), secondGroupSource);
 
-            Assert.Equal(195f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(195f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
         public void GroupRejectsDuplicateMemberWithoutChangingRules()
         {
             // 验证 Group 拒绝重复成员，且已有共享规则不会重复应用。
-            var owner = new LifecycleOwner(new LifecycleStatSet());
-            var group = new StatsOwnerGroup();
+            var subject = new LifecycleSubject(new LifecycleStatSet());
+            var group = new StatSubjectGroup();
             var source = new ModifierSource();
-            group.Add(owner);
+            group.Add(subject);
             group.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), source);
 
-            Assert.Throws<InvalidOperationException>(() => group.Add(owner));
+            Assert.Throws<InvalidOperationException>(() => group.Add(subject));
 
-            Assert.Equal(125f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(125f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
         public void GroupRejectsALaterDependencyCycleBeforePublishingAnyMemberChange()
         {
             // 验证批量挂载中后续成员形成依赖环时，前序成员不会暴露瞬态数值或事件。
-            var first = new LifecycleOwner(new LifecycleStatSet());
-            var second = new LifecycleOwner(new LifecycleStatSet());
-            var group = new StatsOwnerGroup();
+            var first = new LifecycleSubject(new LifecycleStatSet());
+            var second = new LifecycleSubject(new LifecycleStatSet());
+            var group = new StatSubjectGroup();
             var source = new ModifierSource();
             var firstEvents = 0;
             first.StatSet.Health.OnFinalValueChanged += (previous, current) => firstEvents++;
@@ -230,37 +230,37 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         }
 
         [Fact]
-        public void GroupRejectsAnOwnerBeforeApplyingEarlierRulesWhenALaterRuleCycles()
+        public void GroupRejectsASubjectBeforeApplyingEarlierRulesWhenALaterRuleCycles()
         {
             // 验证加入成员时会先验证全部 Group 规则，后续规则失败不会短暂应用前序规则。
-            var owner = new LifecycleOwner(new LifecycleStatSet());
-            var group = new StatsOwnerGroup();
+            var subject = new LifecycleSubject(new LifecycleStatSet());
+            var group = new StatSubjectGroup();
             var source = new ModifierSource();
             var eventCount = 0;
-            owner.StatSet.Health.OnFinalValueChanged += (previous, current) => eventCount++;
+            subject.StatSet.Health.OnFinalValueChanged += (previous, current) => eventCount++;
             group.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), source);
             group.AddModifier(
                 Modifier.Flat(
-                    ModifierValue.From(ValueInput.Final(owner.StatSet.Health), current => current),
+                    ModifierValue.From(ValueInput.Final(subject.StatSet.Health), current => current),
                     LifecycleStatSet.HealthKey),
                 source);
 
-            Assert.Throws<InvalidOperationException>(() => group.Add(owner));
+            Assert.Throws<InvalidOperationException>(() => group.Add(subject));
 
-            Assert.Equal(100f, owner.StatSet.Health.FinalValue);
+            Assert.Equal(100f, subject.StatSet.Health.FinalValue);
             Assert.Equal(0, eventCount);
-            Assert.False(group.Remove(owner));
+            Assert.False(group.Remove(subject));
         }
 
         [Fact]
         public void GroupHandleSourceAndGroupDisposeRemoveSharedRulesSafely()
         {
             // 验证 Handle、Source 和 Group 都能幂等撤销一份共享规则。
-            var owner = new LifecycleOwner(new LifecycleStatSet());
-            var group = new StatsOwnerGroup();
+            var subject = new LifecycleSubject(new LifecycleStatSet());
+            var group = new StatSubjectGroup();
             var firstSource = new ModifierSource();
             var secondSource = new ModifierSource();
-            group.Add(owner);
+            group.Add(subject);
             ModifierHandle handle = group.AddModifier(Modifier.Flat(10f, LifecycleStatSet.HealthKey), firstSource);
             group.AddModifier(Modifier.Flat(20f, LifecycleStatSet.HealthKey), secondSource);
 
@@ -271,25 +271,25 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             group.Dispose();
             group.Dispose();
 
-            Assert.Equal(100f, owner.StatSet.Health.FinalValue);
-            Assert.Throws<ObjectDisposedException>(() => group.Add(owner));
+            Assert.Equal(100f, subject.StatSet.Health.FinalValue);
+            Assert.Throws<ObjectDisposedException>(() => group.Add(subject));
         }
 
         [Fact]
-        public void OwnerDisposeLeavesAllGroupsAndKeepsOtherMembersActive()
+        public void SubjectDisposeLeavesAllGroupsAndKeepsOtherMembersActive()
         {
-            // 验证 Owner 结束时自动退出全部 Group，而共享规则继续影响其他成员。
-            var disposedOwner = new LifecycleOwner(new LifecycleStatSet());
-            var survivor = new LifecycleOwner(new LifecycleStatSet());
-            var firstGroup = new StatsOwnerGroup();
-            var secondGroup = new StatsOwnerGroup();
+            // 验证 Subject 结束时自动退出全部 Group，而共享规则继续影响其他成员。
+            var disposedSubject = new LifecycleSubject(new LifecycleStatSet());
+            var survivor = new LifecycleSubject(new LifecycleStatSet());
+            var firstGroup = new StatSubjectGroup();
+            var secondGroup = new StatSubjectGroup();
             var source = new ModifierSource();
-            firstGroup.Add(disposedOwner);
+            firstGroup.Add(disposedSubject);
             firstGroup.Add(survivor);
-            secondGroup.Add(disposedOwner);
+            secondGroup.Add(disposedSubject);
             firstGroup.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), source);
 
-            disposedOwner.Dispose();
+            disposedSubject.Dispose();
 
             Assert.Equal(125f, survivor.StatSet.Health.FinalValue);
             source.Dispose();
@@ -297,59 +297,59 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         }
 
         [Fact]
-        public void OwnerDisposeCancelsDynamicValueAndBoundsSubscriptions()
+        public void SubjectDisposeCancelsDynamicValueAndBoundsSubscriptions()
         {
-            // 验证 Owner 结束时取消动态 Modifier 与动态边界订阅。
-            var owner = new LifecycleOwner(new LifecycleStatSet());
+            // 验证 Subject 结束时取消动态 Modifier 与动态边界订阅。
+            var subject = new LifecycleSubject(new LifecycleStatSet());
             var source = new ModifierSource();
             var modifierInput = new ObservableValue(10f);
             var minimum = new ObservableValue(0f);
             var maximum = new ObservableValue(200f);
-            owner.AddModifier(
+            subject.AddModifier(
                 Modifier.Flat(
                     ModifierValue.From(ValueInput.External(modifierInput), value => value),
                     LifecycleStatSet.HealthKey),
                 source);
-            owner.StatSet.Health.WithBounds(ValueInput.External(minimum), ValueInput.External(maximum));
+            subject.StatSet.Health.WithBounds(ValueInput.External(minimum), ValueInput.External(maximum));
 
-            owner.Dispose();
+            subject.Dispose();
             modifierInput.Value = 20f;
             maximum.Value = 150f;
 
-            Assert.Throws<ObjectDisposedException>(() => owner.StatSet.Health.BaseValue = 80f);
+            Assert.Throws<ObjectDisposedException>(() => subject.StatSet.Health.BaseValue = 80f);
         }
 
         [Fact]
         public void DisposedObjectsRejectGroupOperationsBeforeObservableChanges()
         {
-            // 验证已结束 Owner 或 Source 的非法 Group 操作在改变成员数值前失败。
-            var disposedOwner = new LifecycleOwner(new LifecycleStatSet());
-            var liveOwner = new LifecycleOwner(new LifecycleStatSet());
+            // 验证已结束 Subject 或 Source 的非法 Group 操作在改变成员数值前失败。
+            var disposedSubject = new LifecycleSubject(new LifecycleStatSet());
+            var liveSubject = new LifecycleSubject(new LifecycleStatSet());
             var disposedSource = new ModifierSource();
-            var group = new StatsOwnerGroup();
-            disposedOwner.Dispose();
+            var group = new StatSubjectGroup();
+            disposedSubject.Dispose();
             disposedSource.Dispose();
-            group.Add(liveOwner);
+            group.Add(liveSubject);
 
-            Assert.Throws<ObjectDisposedException>(() => group.Add(disposedOwner));
+            Assert.Throws<ObjectDisposedException>(() => group.Add(disposedSubject));
             Assert.Throws<ObjectDisposedException>(() =>
                 group.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), disposedSource));
-            Assert.Equal(100f, liveOwner.StatSet.Health.FinalValue);
+            Assert.Equal(100f, liveSubject.StatSet.Health.FinalValue);
         }
 
         [Fact]
-        public void GroupAndOwnerTagsRejectWrongGameplayThread()
+        public void GroupAndSubjectTagsRejectWrongGameplayThread()
         {
-            // 验证 Group 和 Owner Tags 修改都受创建时 Gameplay 线程约束。
-            var owner = new LifecycleOwner(new LifecycleStatSet());
-            var group = new StatsOwnerGroup();
+            // 验证 Group 和 Subject Tags 修改都受创建时 Gameplay 线程约束。
+            var subject = new LifecycleSubject(new LifecycleStatSet());
+            var group = new StatSubjectGroup();
             Exception groupError = null;
             Exception tagError = null;
             var thread = new System.Threading.Thread(() =>
             {
-                try { group.Add(owner); }
+                try { group.Add(subject); }
                 catch (Exception exception) { groupError = exception; }
-                try { owner.Tags.Add(new FakeTag()); }
+                try { subject.Tags.Add(new FakeTag()); }
                 catch (Exception exception) { tagError = exception; }
             });
 
@@ -364,9 +364,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         {
         }
 
-        private sealed class TestOwner : StatsOwner<TestStatSet>
+        private sealed class TestSubject : StatSubject<TestStatSet>
         {
-            public TestOwner(TestStatSet statSet)
+            public TestSubject(TestStatSet statSet)
                 : base(statSet)
             {
             }
@@ -382,9 +382,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             }
         }
 
-        private sealed class NullMemberOwner : StatsOwner<NullMemberStatSet>
+        private sealed class NullMemberSubject : StatSubject<NullMemberStatSet>
         {
-            public NullMemberOwner(NullMemberStatSet statSet)
+            public NullMemberSubject(NullMemberStatSet statSet)
                 : base(statSet)
             {
             }
@@ -402,9 +402,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             }
         }
 
-        private sealed class SharedMemberOwner : StatsOwner<SharedMemberStatSet>
+        private sealed class SharedMemberSubject : StatSubject<SharedMemberStatSet>
         {
-            public SharedMemberOwner(SharedMemberStatSet statSet)
+            public SharedMemberSubject(SharedMemberStatSet statSet)
                 : base(statSet)
             {
             }
@@ -422,9 +422,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             }
         }
 
-        private sealed class DuplicateMemberOwner : StatsOwner<DuplicateMemberStatSet>
+        private sealed class DuplicateMemberSubject : StatSubject<DuplicateMemberStatSet>
         {
-            public DuplicateMemberOwner(DuplicateMemberStatSet statSet) : base(statSet) { }
+            public DuplicateMemberSubject(DuplicateMemberStatSet statSet) : base(statSet) { }
         }
 
         private sealed class LifecycleStatSet : StatSet
@@ -455,9 +455,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             }
         }
 
-        private sealed class LifecycleOwner : StatsOwner<LifecycleStatSet>
+        private sealed class LifecycleSubject : StatSubject<LifecycleStatSet>
         {
-            public LifecycleOwner(LifecycleStatSet statSet) : base(statSet) { }
+            public LifecycleSubject(LifecycleStatSet statSet) : base(statSet) { }
         }
 
         private sealed class NeverMatchesQuery : ITagQuery

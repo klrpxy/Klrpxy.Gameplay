@@ -257,7 +257,7 @@ namespace Klrpxy.Gameplay.Stats
         {
             var result = new List<IModifierEntry>();
             foreach (ModifierRegistration modifier in modifiers) result.Add(modifier);
-            StatSet?.Owner?.AppendGroupModifiers(this, result);
+            StatSet?.Subject?.AppendGroupModifiers(this, result);
             result.Sort((left, right) => left.Order.CompareTo(right.Order));
             return result;
         }

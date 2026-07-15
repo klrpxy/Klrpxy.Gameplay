@@ -31,7 +31,7 @@ namespace Consumer
     {
         public RangeStat Damage { get; } = new RangeStat(10f, 15f);
     }
-    public sealed class Weapon : StatsOwner<WeaponStatSet>
+    public sealed class Weapon : StatSubject<WeaponStatSet>
     {
         public Weapon() : base(new WeaponStatSet()) { }
     }
@@ -314,7 +314,7 @@ using Klrpxy.Gameplay.Stats;
 namespace Consumer
 {
     public partial class HeroStatSet : StatSet { public Stat Health { get; } }
-    public sealed class Hero : StatsOwner<HeroStatSet> { public Hero() : base(new HeroStatSet()) { } }
+    public sealed class Hero : StatSubject<HeroStatSet> { public Hero() : base(new HeroStatSet()) { } }
     public static class ConsumerContract
     {
         public static bool Verify()
@@ -329,9 +329,9 @@ namespace Consumer
         }
 
         [Fact]
-        public void GeneratedStatKeyGetsDeclaredStatFromOwnersStatSet()
+        public void GeneratedStatKeyGetsDeclaredStatFromSubjectsStatSet()
         {
-            // 验证生成的 StatKey 能从 Owner 的实际 StatSet 取得声明的 Stat。
+            // 验证生成的 StatKey 能从 Subject 的实际 StatSet 取得声明的 Stat。
             Compilation compilation = RunGenerator(@"
 using Klrpxy.Gameplay.Stats;
 
@@ -342,7 +342,7 @@ namespace Consumer
         public Stat Health { get; } = new Stat(100f);
     }
 
-    public sealed class Hero : StatsOwner<HeroStatSet>
+    public sealed class Hero : StatSubject<HeroStatSet>
     {
         public Hero(HeroStatSet statSet) : base(statSet) { }
     }
@@ -534,9 +534,9 @@ namespace Consumer
         }
 
         [Fact]
-        public void GeneratedTagQueryControlsOwnerModifierThroughPublicApi()
+        public void GeneratedTagQueryControlsSubjectModifierThroughPublicApi()
         {
-            // 验证玩法代码可直接用现有 TagQuery 声明 Modifier 条件并随 Owner Tags 自动启停。
+            // 验证玩法代码可直接用现有 TagQuery 声明 Modifier 条件并随 Subject Tags 自动启停。
             Compilation compilation = RunStatsAndTagsGenerators(@"
 using Klrpxy.Gameplay.Stats;
 using Klrpxy.Gameplay.Tags;
@@ -554,7 +554,7 @@ namespace Consumer
         public Stat Health { get; } = new Stat(100f);
     }
 
-    public sealed class Hero : StatsOwner<HeroStats>
+    public sealed class Hero : StatSubject<HeroStats>
     {
         public Hero() : base(new HeroStats(), GameTags.Unit.Ally) { }
     }
@@ -584,7 +584,7 @@ namespace Consumer
         [Fact]
         public void GeneratedTagQueryFiltersGroupMembersAsTagsChange()
         {
-            // 验证 Group 共享规则通过现有 TagQuery 自动跟随各 Owner 的 Tags 变化。
+            // 验证 Group 共享规则通过现有 TagQuery 自动跟随各 Subject 的 Tags 变化。
             Compilation compilation = RunStatsAndTagsGenerators(@"
 using Klrpxy.Gameplay.Stats;
 using Klrpxy.Gameplay.Tags;
@@ -601,7 +601,7 @@ namespace Consumer
     {
         public Stat Health { get; } = new Stat(100f);
     }
-    public sealed class Hero : StatsOwner<HeroStats>
+    public sealed class Hero : StatSubject<HeroStats>
     {
         public Hero(params Klrpxy.Gameplay.Tags.Runtime.IGameplayTag[] tags) : base(new HeroStats(), tags) { }
     }
@@ -611,7 +611,7 @@ namespace Consumer
         {
             var ally = new Hero(GameTags.Unit.Ally);
             var neutral = new Hero();
-            var group = new StatsOwnerGroup();
+            var group = new StatSubjectGroup();
             var source = new ModifierSource();
             group.Add(ally);
             group.Add(neutral);
@@ -619,14 +619,14 @@ namespace Consumer
                 Modifier.Flat(25f, HeroStats.HealthKey)
                     .WhenTargetMatches(TagQuery.Has(GameTags.Unit.Ally)),
                 source);
-            bool publicQueryMatchesOwnerTags = TagQuery.Has(GameTags.Unit.Ally).Matches(ally.Tags);
+            bool publicQueryMatchesSubjectTags = TagQuery.Has(GameTags.Unit.Ally).Matches(ally.Tags);
             Klrpxy.Gameplay.Tags.Runtime.TagSetChange observedChange = null;
             neutral.Tags.OnChanged += change => observedChange = change;
             bool initiallyFiltered = ally.StatSet.Health.FinalValue == 125f
                 && neutral.StatSet.Health.FinalValue == 100f;
             neutral.AddTag(GameTags.Unit.Ally);
             ally.RemoveTag(GameTags.Unit.Ally);
-            return publicQueryMatchesOwnerTags
+            return publicQueryMatchesSubjectTags
                 && observedChange != null
                 && object.ReferenceEquals(observedChange.Tag, GameTags.Unit.Ally)
                 && observedChange.Kind == Klrpxy.Gameplay.Tags.Runtime.TagSetChangeKind.Added
@@ -660,7 +660,7 @@ namespace Consumer
     {
         public Stat Health { get; } = new Stat(100f);
     }
-    public sealed class Hero : StatsOwner<HeroStats>
+    public sealed class Hero : StatSubject<HeroStats>
     {
         public Hero() : base(new HeroStats()) { }
     }
@@ -687,7 +687,7 @@ namespace Consumer
         }
 
         [Fact]
-        public void BazaarBoardAppliesSharedRulesToMatchingHeterogeneousOwners()
+        public void BazaarBoardAppliesSharedRulesToMatchingHeterogeneousSubjects()
         {
             Compilation compilation = RunStatsAndTagsGenerators(ReadBazaarGameplaySource());
 
@@ -695,7 +695,7 @@ namespace Consumer
         }
 
         [Fact]
-        public void BazaarEffectsEndThroughHandlesSourcesGroupsAndOwners()
+        public void BazaarEffectsEndThroughHandlesSourcesGroupsAndSubjects()
         {
             Compilation compilation = RunStatsAndTagsGenerators(ReadBazaarGameplaySource());
 

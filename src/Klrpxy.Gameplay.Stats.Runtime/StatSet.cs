@@ -7,7 +7,7 @@ namespace Klrpxy.Gameplay.Stats
     {
         private readonly List<object> boundMembers = new List<object>();
 
-        public StatsOwner Owner { get; private set; }
+        public StatSubject Subject { get; private set; }
 
         protected static StatKey<TStat> CreateKey<TStat>(
             Type declaringType,
@@ -35,11 +35,11 @@ namespace Klrpxy.Gameplay.Stats
         {
         }
 
-        internal void Bind(StatsOwner owner)
+        internal void Bind(StatSubject subject)
         {
-            if (Owner != null)
+            if (Subject != null)
             {
-                throw new InvalidOperationException("The StatSet already belongs to a StatsOwner.");
+                throw new InvalidOperationException("The StatSet already belongs to a StatSubject.");
             }
 
             var members = new List<StatMemberDescriptor>();
@@ -73,7 +73,7 @@ namespace Klrpxy.Gameplay.Stats
                 boundMembers.Add(value);
             }
 
-            Owner = owner;
+            Subject = subject;
         }
 
         internal void DisposeMembers()

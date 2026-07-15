@@ -197,7 +197,7 @@ namespace Klrpxy.Gameplay.Stats
             FloatRange previous = finalRange;
             var allModifiers = new System.Collections.Generic.List<IModifierEntry>();
             foreach (Stat.ModifierRegistration modifier in modifiers) allModifiers.Add(modifier);
-            StatSet?.Owner?.AppendGroupModifiers(this, allModifiers);
+            StatSet?.Subject?.AppendGroupModifiers(this, allModifiers);
             allModifiers.Sort((left, right) => left.Order.CompareTo(right.Order));
             FloatRange range = new FloatRange(
                 ModifierCalculation.CalculateArithmetic(BaseRange.Min, allModifiers),

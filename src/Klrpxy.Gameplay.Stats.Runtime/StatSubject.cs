@@ -5,21 +5,21 @@ using Klrpxy.Gameplay.Tags.Runtime;
 
 namespace Klrpxy.Gameplay.Stats
 {
-    public abstract class StatsOwner : IDisposable
+    public abstract class StatSubject : IDisposable
     {
         private static long nextModifierOrder;
         private readonly GameplayThreadGuard threadGuard = new GameplayThreadGuard();
         private readonly HashSet<ModifierHandle> directHandles = new HashSet<ModifierHandle>();
-        private readonly HashSet<StatsOwnerGroup> groups = new HashSet<StatsOwnerGroup>();
+        private readonly HashSet<StatSubjectGroup> groups = new HashSet<StatSubjectGroup>();
         private readonly List<ConditionalRule> conditionalRules = new List<ConditionalRule>();
-        private readonly OwnerTagSet tags;
+        private readonly SubjectTagSet tags;
         private bool disposed;
-        protected StatsOwner(StatSet statSet)
+        protected StatSubject(StatSet statSet)
             : this(statSet, Array.Empty<IGameplayTag>())
         {
         }
 
-        protected StatsOwner(StatSet statSet, params IGameplayTag[] initialTags)
+        protected StatSubject(StatSet statSet, params IGameplayTag[] initialTags)
         {
             if (statSet == null)
             {
@@ -27,7 +27,7 @@ namespace Klrpxy.Gameplay.Stats
             }
 
             if (initialTags == null) throw new ArgumentNullException(nameof(initialTags));
-            tags = new OwnerTagSet(VerifyTagAccess);
+            tags = new SubjectTagSet(VerifyTagAccess);
             foreach (IGameplayTag tag in initialTags) tags.Add(tag);
             tags.OnChanged += TagsChanged;
             StatSet = statSet;
@@ -59,7 +59,7 @@ namespace Klrpxy.Gameplay.Stats
             source.ThrowIfDisposed();
             if (!HasModifierTarget(modifier))
             {
-                throw new InvalidOperationException("The Modifier target is not declared by this StatsOwner.");
+                throw new InvalidOperationException("The Modifier target is not declared by this StatSubject.");
             }
 
             long order = NextModifierOrder();
@@ -81,7 +81,7 @@ namespace Klrpxy.Gameplay.Stats
                 return handle;
             }
 
-            throw new InvalidOperationException("The Modifier target is not declared by this StatsOwner.");
+            throw new InvalidOperationException("The Modifier target is not declared by this StatSubject.");
         }
 
         private bool HasModifierTarget(Modifier modifier)
@@ -114,17 +114,17 @@ namespace Klrpxy.Gameplay.Stats
 
         internal void AppendGroupModifiers(object target, List<IModifierEntry> result)
         {
-            foreach (StatsOwnerGroup group in groups) group.AppendModifiers(this, target, result);
+            foreach (StatSubjectGroup group in groups) group.AppendModifiers(this, target, result);
         }
 
-        internal void JoinGroup(StatsOwnerGroup group)
+        internal void JoinGroup(StatSubjectGroup group)
         {
             threadGuard.Verify();
             ThrowIfDisposed();
             groups.Add(group);
         }
 
-        internal void LeaveGroup(StatsOwnerGroup group) => groups.Remove(group);
+        internal void LeaveGroup(StatSubjectGroup group) => groups.Remove(group);
 
         private ModifierHandle AddConditionalModifier(Modifier modifier, ModifierSource source, long order)
         {
@@ -156,7 +156,7 @@ namespace Klrpxy.Gameplay.Stats
             StatsPropagationCoordinator.Execute(() =>
             {
                 foreach (ConditionalRule rule in conditionalRules) rule.Update();
-                foreach (StatsOwnerGroup group in groups) group.TagsChanged(this);
+                foreach (StatSubjectGroup group in groups) group.TagsChanged(this);
             });
         }
 
@@ -165,7 +165,7 @@ namespace Klrpxy.Gameplay.Stats
             threadGuard.Verify();
             if (disposed) return;
             disposed = true;
-            foreach (StatsOwnerGroup group in new List<StatsOwnerGroup>(groups)) group.RemoveDisposedOwner(this);
+            foreach (StatSubjectGroup group in new List<StatSubjectGroup>(groups)) group.RemoveDisposedSubject(this);
             groups.Clear();
             foreach (ModifierHandle handle in directHandles) handle.RemoveWithoutRefresh();
             directHandles.Clear();
@@ -177,7 +177,7 @@ namespace Klrpxy.Gameplay.Stats
 
         private void ThrowIfDisposed()
         {
-            if (disposed) throw new ObjectDisposedException(nameof(StatsOwner));
+            if (disposed) throw new ObjectDisposedException(nameof(StatSubject));
         }
 
         private void VerifyTagAccess()
@@ -188,25 +188,25 @@ namespace Klrpxy.Gameplay.Stats
 
         private sealed class ConditionalRule
         {
-            private readonly StatsOwner owner;
+            private readonly StatSubject subject;
             private readonly Modifier modifier;
             private readonly long order;
             private ModifierAttachment attachment;
             private ModifierAttachment removedAttachment;
 
-            internal ConditionalRule(StatsOwner owner, Modifier modifier, long order)
+            internal ConditionalRule(StatSubject subject, Modifier modifier, long order)
             {
-                this.owner = owner;
+                this.subject = subject;
                 this.modifier = modifier;
                 this.order = order;
             }
 
             internal void Update()
             {
-                bool matches = modifier.TargetCondition.Matches(owner.Tags);
+                bool matches = modifier.TargetCondition.Matches(subject.Tags);
                 if (matches && attachment == null)
                 {
-                    attachment = owner.AttachDirectModifier(modifier, order);
+                    attachment = subject.AttachDirectModifier(modifier, order);
                 }
                 else if (!matches && attachment != null)
                 {
@@ -263,16 +263,16 @@ namespace Klrpxy.Gameplay.Stats
         }
     }
 
-    public abstract class StatsOwner<TStatSet> : StatsOwner
+    public abstract class StatSubject<TStatSet> : StatSubject
         where TStatSet : StatSet
     {
-        protected StatsOwner(TStatSet statSet)
+        protected StatSubject(TStatSet statSet)
             : base(statSet)
         {
         }
 
 
-        protected StatsOwner(TStatSet statSet, params IGameplayTag[] initialTags)
+        protected StatSubject(TStatSet statSet, params IGameplayTag[] initialTags)
             : base(statSet, initialTags)
         {
         }
