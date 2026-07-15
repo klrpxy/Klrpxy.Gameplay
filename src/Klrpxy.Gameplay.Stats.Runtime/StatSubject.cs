@@ -150,9 +150,14 @@ namespace Klrpxy.Gameplay.Stats
 
         internal void JoinGroup(StatSubjectGroup group)
         {
+            VerifyCanJoinGroup();
+            groups.Add(group);
+        }
+
+        internal void VerifyCanJoinGroup()
+        {
             threadGuard.Verify();
             ThrowIfDisposed();
-            groups.Add(group);
         }
 
         internal void LeaveGroup(StatSubjectGroup group) => groups.Remove(group);

@@ -641,6 +641,65 @@ namespace Consumer
         }
 
         [Fact]
+        public void Roslyn38ConsumerUsesGeneratedKeyWithGroupAndTagFluentRules()
+        {
+            Compilation compilation = RunStatsAndTagsGenerators(@"
+using Klrpxy.Gameplay.Stats;
+using Klrpxy.Gameplay.Tags;
+
+[GenerateGameplayTags]
+public static partial class GameTags
+{
+    private const string TagTable = @""Item.Quick
+Item.Fire"";
+}
+
+namespace Consumer
+{
+    public sealed partial class ItemStats : StatSet
+    {
+        public Stat Haste { get; } = new Stat(10f);
+    }
+    public sealed partial class OtherStats : StatSet
+    {
+        public Stat Armor { get; } = new Stat(50f);
+    }
+    public sealed class Item : StatSubject<ItemStats>
+    {
+        public Item(params Klrpxy.Gameplay.Tags.Runtime.IGameplayTag[] tags) : base(new ItemStats(), tags) { }
+    }
+    public sealed class Other : StatSubject<OtherStats>
+    {
+        public Other() : base(new OtherStats()) { }
+    }
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var quick = new Item(GameTags.Item.Quick);
+            var fire = new Item(GameTags.Item.Quick, GameTags.Item.Fire);
+            var other = new Other();
+            var group = new StatSubjectGroup().Add(new StatSubject[] { quick, fire, other });
+            var source = new ModifierSource();
+            source.For(group)
+                .WhereTargetHas(GameTags.Item)
+                .WhereTargetHas(GameTags.Item.Quick)
+                .WhereTargetMatches(TagQuery.None(GameTags.Item.Fire))
+                .Modify(ItemStats.HasteKey)
+                .Add(5f);
+            bool initial = quick.StatSet.Haste.FinalValue == 15f
+                && fire.StatSet.Haste.FinalValue == 10f
+                && other.StatSet.Armor.FinalValue == 50f;
+            quick.AddTag(GameTags.Item.Fire);
+            return initial && quick.StatSet.Haste.FinalValue == 10f;
+        }
+    }
+}");
+
+            Assert.True((bool)RunConsumerContract(compilation));
+        }
+
+        [Fact]
         public void TagConditionActivationRetainsOriginalModifierOrder()
         {
             // 验证 Tag 条件启停时保留 Modifier 的原始添加顺序。
