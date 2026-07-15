@@ -85,11 +85,19 @@ namespace Klrpxy.Gameplay.Stats
             return CreateDirect(ModifierKind.Flat, value, 0, 1f);
         }
 
+        internal static Modifier CreateDirectFlat(ModifierValue value) => CreateDirect(ModifierKind.Flat, value, 0, 1f);
+
         internal static Modifier CreateDirectPercent(float value) => CreateDirect(ModifierKind.Percent, value, 0, 0.01f);
+
+        internal static Modifier CreateDirectPercent(ModifierValue value) => CreateDirect(ModifierKind.Percent, value, 0, 0.01f);
 
         internal static Modifier CreateDirectMultiply(float value) => CreateDirect(ModifierKind.Multiply, value, 0, 1f);
 
+        internal static Modifier CreateDirectMultiply(ModifierValue value) => CreateDirect(ModifierKind.Multiply, value, 0, 1f);
+
         internal static Modifier CreateDirectOverride(float value, int priority) => CreateDirect(ModifierKind.Override, value, priority, 1f);
+
+        internal static Modifier CreateDirectOverride(ModifierValue value, int priority) => CreateDirect(ModifierKind.Override, value, priority, 1f);
 
         internal static Modifier CreateDirectClamp(float minimum, float maximum)
         {
@@ -100,6 +108,12 @@ namespace Klrpxy.Gameplay.Stats
         {
             ValidateFinite(value, nameof(value));
             return new Modifier(kind, value, null, scale, default(FloatRange), priority, null);
+        }
+
+        private static Modifier CreateDirect(ModifierKind kind, ModifierValue value, int priority, float scale)
+        {
+            if (value == null) throw new ArgumentNullException(nameof(value));
+            return new Modifier(kind, 0f, value, scale, default(FloatRange), priority, null);
         }
 
         private static Modifier Create<TStat>(ModifierKind kind, float value, StatKey<TStat> target, int priority)

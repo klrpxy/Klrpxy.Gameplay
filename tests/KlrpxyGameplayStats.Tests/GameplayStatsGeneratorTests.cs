@@ -20,6 +20,44 @@ namespace KlrpxyGameplayStats.Tests
     public sealed class GameplayStatsGeneratorTests
     {
         [Fact]
+        public void Roslyn38ConsumerUsesSingleInputDynamicFluentModifiers()
+        {
+            Compilation compilation = RunGenerator(@"
+using Klrpxy.Gameplay.Stats;
+namespace Consumer
+{
+    public sealed partial class HeroStats : StatSet
+    {
+        public Stat Power { get; } = new Stat(100f);
+        public Stat Rage { get; } = new Stat(10f);
+        public RangeStat Damage { get; } = new RangeStat(5f, 10f);
+        public Resource Energy { get; } = new Resource(2f);
+    }
+    public sealed class Hero : StatSubject<HeroStats>
+    {
+        public Hero() : base(new HeroStats()) { }
+    }
+    public static class ConsumerContract
+    {
+        public static bool Verify()
+        {
+            var hero = new Hero();
+            var source = new ModifierSource();
+            source.Modify(hero.StatSet.Power).Add(hero.StatSet.Rage, value => value * 0.5f);
+            source.Modify(hero.StatSet.Power).AddPercent(hero.StatSet.Damage, range => range.Max);
+            source.Modify(hero.StatSet.Power).Multiply(hero.StatSet.Energy, value => value);
+            bool initial = hero.StatSet.Power.FinalValue == 231f;
+            hero.StatSet.Rage.BaseValue = 20f;
+            hero.StatSet.Energy.Set(3f);
+            return initial && hero.StatSet.Power.FinalValue == 363f;
+        }
+    }
+}");
+
+            Assert.True((bool)RunConsumerContract(compilation));
+        }
+
+        [Fact]
         public void GeneratedRangeStatKeyTargetsRangeModifier()
         {
             // 验证生成的 RangeStatKey 可作为 Modifier 的唯一目标并改变 FinalRange。
