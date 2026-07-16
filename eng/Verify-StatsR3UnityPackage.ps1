@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$PackagePath = 'artifacts/Klrpxy.Gameplay.Stats.unitypackage',
+    [string]$PackagePath = 'artifacts/Klrpxy.Gameplay.Stats.R3.unitypackage',
 
     [string]$ReportPath,
 
@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 
 if (-not (Test-Path -LiteralPath $PackagePath -PathType Leaf))
 {
-    throw "UNITY_PACKAGE_SETTINGS_FAILURE Expected Unity package was not found: $PackagePath"
+    throw "UNITY_PACKAGE_SETTINGS_FAILURE Expected Stats R3 Unity package was not found: $PackagePath"
 }
 
 if ([System.IO.Path]::GetExtension($PackagePath) -ne '.unitypackage')
@@ -25,7 +25,7 @@ if ($packageSize -eq 0 -or $packageSize -gt 5MB)
     throw "UNITY_PACKAGE_SETTINGS_FAILURE Unity package must be larger than zero and no larger than 5 MB: $PackagePath"
 }
 
-$extractRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("KlrpxyGameplayStatsVerify-" + [Guid]::NewGuid().ToString('N'))
+$extractRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("KlrpxyGameplayStatsR3Verify-" + [Guid]::NewGuid().ToString('N'))
 try
 {
     New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null
@@ -49,33 +49,21 @@ try
             }
         }
     })
-    $analyzer = @($packageAssets | Where-Object { $_.Path -eq 'Assets/KlrpxyGameplayStats/KlrpxyGameplayStats.dll' })
-    $runtime = @($packageAssets | Where-Object { $_.Path -eq 'Assets/KlrpxyGameplayStats/KlrpxyGameplayStats.Runtime.dll' })
-    $adapter = @($packageAssets | Where-Object { $_.Path -eq 'Assets/KlrpxyGameplayStats/StatsDiagnosticsUnityAdapter.cs' })
-    if ($analyzer.Count -ne 1 -or $runtime.Count -ne 1 -or $adapter.Count -ne 1)
+    $runtime = @($packageAssets | Where-Object { $_.Path -eq 'Assets/KlrpxyGameplayStatsR3/KlrpxyGameplayStats.R3.dll' })
+    if ($runtime.Count -ne 1)
     {
-        throw 'UNITY_PACKAGE_SETTINGS_FAILURE Stats Unity package must contain exactly one analyzer DLL, one runtime DLL, and one Unity diagnostics adapter.'
+        throw 'UNITY_PACKAGE_SETTINGS_FAILURE Stats R3 Unity package must contain exactly one adapter runtime DLL.'
     }
 
     $expectedPaths = @(
-        'Assets/KlrpxyGameplayStats',
-        'Assets/KlrpxyGameplayStats/KlrpxyGameplayStats.dll',
-        'Assets/KlrpxyGameplayStats/KlrpxyGameplayStats.Runtime.dll',
-        'Assets/KlrpxyGameplayStats/StatsDiagnosticsUnityAdapter.cs'
+        'Assets/KlrpxyGameplayStatsR3',
+        'Assets/KlrpxyGameplayStatsR3/KlrpxyGameplayStats.R3.dll'
     )
     $unexpectedPaths = @($packageAssets.Path | Where-Object { $_ -notin $expectedPaths })
     $missingPaths = @($expectedPaths | Where-Object { $_ -notin $packageAssets.Path })
     if ($unexpectedPaths.Count -ne 0 -or $missingPaths.Count -ne 0)
     {
-        throw "UNITY_PACKAGE_SETTINGS_FAILURE Stats Unity package has an unexpected asset manifest. Missing: $($missingPaths -join ', '). Unexpected: $($unexpectedPaths -join ', ')"
-    }
-
-    $hasAnalyzerImportSettings = ($analyzer[0].Meta -match '(?m)^- RoslynAnalyzer\r?$') -and
-        ($analyzer[0].Meta -match '(?s)Any:\s*second:\s*enabled: 0') -and
-        ($analyzer[0].Meta -match '(?m)^  isExplicitlyReferenced: 0\r?$')
-    if (-not $hasAnalyzerImportSettings)
-    {
-        throw 'UNITY_PACKAGE_SETTINGS_FAILURE The Stats analyzer must be a RoslynAnalyzer with runtime platforms disabled and implicit references enabled.'
+        throw "UNITY_PACKAGE_SETTINGS_FAILURE Stats R3 Unity package has an unexpected asset manifest. Missing: $($missingPaths -join ', '). Unexpected: $($unexpectedPaths -join ', ')"
     }
 
     $hasRuntimeImportSettings = ($runtime[0].Meta -notmatch 'RoslynAnalyzer') -and
@@ -83,28 +71,20 @@ try
         ($runtime[0].Meta -match '(?m)^  isExplicitlyReferenced: 0\r?$')
     if (-not $hasRuntimeImportSettings)
     {
-        throw 'UNITY_PACKAGE_SETTINGS_FAILURE The Stats runtime must have runtime platforms enabled and implicit references enabled.'
+        throw 'UNITY_PACKAGE_SETTINGS_FAILURE The Stats R3 adapter must have runtime platforms enabled and implicit references enabled.'
     }
 
     $forbiddenAssets = @($packageAssets | Where-Object {
-        $_.Path -match '(?i)(KlrpxyGameplayTags|KlrpxyGameplayStats\.R3|(^|/)R3\.dll$|Microsoft\.CodeAnalysis)'
+        $_.Path -match '(?i)(KlrpxyGameplayTags|KlrpxyGameplayStats\.Runtime|(^|/)R3\.dll$|Microsoft\.CodeAnalysis)'
     })
     if ($forbiddenAssets.Count -ne 0)
     {
-        throw "UNITY_PACKAGE_SETTINGS_FAILURE Stats Unity package contains forbidden dependency assets: $($forbiddenAssets.Path -join ', ')"
+        throw "UNITY_PACKAGE_SETTINGS_FAILURE Stats R3 Unity package contains forbidden dependency assets: $($forbiddenAssets.Path -join ', ')"
     }
 
-    foreach ($binary in @($analyzer[0], $runtime[0]))
+    if ($runtime[0].Size -eq 0 -or $runtime[0].Size -gt 2MB)
     {
-        if ($binary.Size -eq 0 -or $binary.Size -gt 2MB)
-        {
-            throw "UNITY_PACKAGE_SETTINGS_FAILURE Stats binary must be larger than zero and no larger than 2 MB: $($binary.Path)"
-        }
-    }
-
-    if ($adapter[0].Size -eq 0)
-    {
-        throw 'UNITY_PACKAGE_SETTINGS_FAILURE The Unity diagnostics adapter is empty.'
+        throw "UNITY_PACKAGE_SETTINGS_FAILURE Stats R3 adapter binary must be larger than zero and no larger than 2 MB: $($runtime[0].Path)"
     }
 
     if ($ReportPath)
@@ -142,4 +122,4 @@ finally
     }
 }
 
-Write-Output "KLRPXY_STATS_PACKAGE_VERIFY_PASS path=$PackagePath"
+Write-Output "KLRPXY_STATS_R3_PACKAGE_VERIFY_PASS path=$PackagePath"
