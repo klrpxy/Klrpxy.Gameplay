@@ -152,7 +152,7 @@ namespace Klrpxy.Gameplay.Stats
                     prepared.Add(new PreparedSubjectTarget(member, rule.Prepare(member)));
                 }
 
-                rule.Subscribe();
+                rule.Subscribe(() => ConditionChanged(rule));
                 handle = new ModifierHandle(source, ignored =>
                 {
                     rules.Remove(rule);
@@ -207,6 +207,16 @@ namespace Klrpxy.Gameplay.Stats
         internal void TagsChanged(StatSubject subject)
         {
             foreach (GroupRule rule in rules) rule.Update(subject);
+        }
+
+        private void ConditionChanged(GroupRule rule)
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+            StatsPropagationCoordinator.Execute(() =>
+            {
+                foreach (StatSubject member in members) rule.Update(member);
+            });
         }
 
         internal void AppendModifiers(StatSubject subject, object target, List<IModifierEntry> result)
@@ -285,7 +295,8 @@ namespace Klrpxy.Gameplay.Stats
         {
             private readonly Dictionary<StatSubject, RuleTarget> targets = new Dictionary<StatSubject, RuleTarget>();
             private readonly HashSet<object> removedTargets = new HashSet<object>();
-            private IDisposable subscription;
+            private IDisposable valueSubscription;
+            private IDisposable conditionSubscription;
 
             internal GroupRule(Modifier modifier, long order)
             {
@@ -301,7 +312,7 @@ namespace Klrpxy.Gameplay.Stats
 
             internal RuleTarget Prepare(StatSubject subject)
             {
-                if (Modifier.TargetCondition != null && !Modifier.TargetCondition.Matches(subject.Tags)) return null;
+                if (!Modifier.Matches(subject.Tags)) return null;
                 if (!subject.TryGetModifierTarget(Modifier, out object target)) return null;
                 IDisposable dependency = Modifier.DynamicValue == null
                     ? null
@@ -309,9 +320,22 @@ namespace Klrpxy.Gameplay.Stats
                 return new RuleTarget(target, dependency);
             }
 
-            internal void Subscribe()
+            internal void Subscribe(Action conditionChanged)
             {
-                if (Modifier.DynamicValue != null) subscription = Modifier.DynamicValue.Subscribe(RefreshAll);
+                if (Modifier.DynamicValue != null) valueSubscription = Modifier.DynamicValue.Subscribe(RefreshAll);
+                try
+                {
+                    if (Modifier.Condition != null)
+                    {
+                        conditionSubscription = Modifier.Condition.Subscribe(conditionChanged);
+                    }
+                }
+                catch
+                {
+                    valueSubscription?.Dispose();
+                    valueSubscription = null;
+                    throw;
+                }
             }
 
             internal void Commit(StatSubject subject, RuleTarget target)
@@ -338,7 +362,7 @@ namespace Klrpxy.Gameplay.Stats
 
             internal void Update(StatSubject subject)
             {
-                bool matches = Modifier.TargetCondition == null || Modifier.TargetCondition.Matches(subject.Tags);
+                bool matches = Modifier.Matches(subject.Tags);
                 if (matches && !targets.ContainsKey(subject))
                 {
                     RuleTarget target = Prepare(subject);
@@ -401,8 +425,10 @@ namespace Klrpxy.Gameplay.Stats
 
             internal void DisposeSubscription()
             {
-                subscription?.Dispose();
-                subscription = null;
+                valueSubscription?.Dispose();
+                conditionSubscription?.Dispose();
+                valueSubscription = null;
+                conditionSubscription = null;
             }
         }
 

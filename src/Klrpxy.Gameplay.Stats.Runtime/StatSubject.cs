@@ -66,9 +66,9 @@ namespace Klrpxy.Gameplay.Stats
             }
 
             long order = NextModifierOrder();
-            if (modifier.TargetCondition != null)
+            if (modifier.TargetCondition != null || modifier.Condition != null)
             {
-                return AddConditionalModifier(modifier, source, order);
+                return AddConditionalModifier(modifier, source, order, null);
             }
             if (modifier.Target is StatKey<Stat> statKey && statKey.TryGet(StatSet, out Stat stat))
             {
@@ -95,6 +95,11 @@ namespace Klrpxy.Gameplay.Stats
             if (stat == null || stat.StatSet?.Subject != this)
             {
                 throw new InvalidOperationException("The Stat target is not declared by this StatSubject.");
+            }
+
+            if (modifier.Condition != null)
+            {
+                return AddConditionalModifier(modifier, source, NextModifierOrder(), stat);
             }
 
             ModifierHandle handle = null;
@@ -162,17 +167,18 @@ namespace Klrpxy.Gameplay.Stats
 
         internal void LeaveGroup(StatSubjectGroup group) => groups.Remove(group);
 
-        private ModifierHandle AddConditionalModifier(Modifier modifier, ModifierSource source, long order)
+        private ModifierHandle AddConditionalModifier(Modifier modifier, ModifierSource source, long order, object target)
         {
-            var rule = new ConditionalRule(this, modifier, order);
+            var rule = new ConditionalRule(this, modifier, order, target);
             ModifierHandle handle = null;
             handle = new ModifierHandle(source, ignored =>
             {
                 conditionalRules.Remove(rule);
-                rule.RemoveWithoutRefresh();
+                rule.DisposeWithoutRefresh();
             }, rule.RefreshRemoved);
             try
             {
+                rule.Subscribe();
                 StatsPropagationCoordinator.Execute(rule.Update);
                 source.Add(handle);
                 conditionalRules.Add(rule);
@@ -181,7 +187,7 @@ namespace Klrpxy.Gameplay.Stats
             }
             catch
             {
-                rule.RemoveWithoutRefresh();
+                rule.DisposeWithoutRefresh();
                 rule.RefreshRemoved();
                 throw;
             }
@@ -194,6 +200,13 @@ namespace Klrpxy.Gameplay.Stats
                 foreach (ConditionalRule rule in conditionalRules) rule.Update();
                 foreach (StatSubjectGroup group in groups) group.TagsChanged(this);
             });
+        }
+
+        private void ConditionChanged(ConditionalRule rule)
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+            StatsPropagationCoordinator.Execute(rule.Update);
         }
 
         public void Dispose()
@@ -229,36 +242,55 @@ namespace Klrpxy.Gameplay.Stats
             private readonly StatSubject subject;
             private readonly Modifier modifier;
             private readonly long order;
+            private readonly object target;
             private ModifierAttachment attachment;
             private ModifierAttachment removedAttachment;
+            private IDisposable conditionSubscription;
 
-            internal ConditionalRule(StatSubject subject, Modifier modifier, long order)
+            internal ConditionalRule(StatSubject subject, Modifier modifier, long order, object target)
             {
                 this.subject = subject;
                 this.modifier = modifier;
                 this.order = order;
+                this.target = target;
+            }
+
+            internal void Subscribe()
+            {
+                if (modifier.Condition != null)
+                {
+                    conditionSubscription = modifier.Condition.Subscribe(
+                        () => subject.ConditionChanged(this));
+                }
             }
 
             internal void Update()
             {
-                bool matches = modifier.TargetCondition.Matches(subject.Tags);
+                bool matches = modifier.Matches(subject.Tags);
                 if (matches && attachment == null)
                 {
-                    attachment = subject.AttachDirectModifier(modifier, order);
+                    attachment = subject.AttachDirectModifier(modifier, order, target);
                 }
                 else if (!matches && attachment != null)
                 {
-                    RemoveWithoutRefresh();
+                    DetachWithoutRefresh();
                     RefreshRemoved();
                 }
             }
 
-            internal void RemoveWithoutRefresh()
+            private void DetachWithoutRefresh()
             {
                 if (attachment == null) return;
                 removedAttachment = attachment;
                 attachment = null;
                 removedAttachment.RemoveWithoutRefresh();
+            }
+
+            internal void DisposeWithoutRefresh()
+            {
+                conditionSubscription?.Dispose();
+                conditionSubscription = null;
+                DetachWithoutRefresh();
             }
 
             internal void RefreshRemoved()
@@ -268,8 +300,18 @@ namespace Klrpxy.Gameplay.Stats
             }
         }
 
-        private ModifierAttachment AttachDirectModifier(Modifier modifier, long order)
+        private ModifierAttachment AttachDirectModifier(Modifier modifier, long order, object directTarget)
         {
+            if (directTarget is Stat directStat)
+            {
+                var directRegistration = new Stat.ModifierRegistration(modifier, order);
+                directRegistration.Subscribe(directStat.RecalculateForCoordinator, directStat);
+                return AttachDirectModifier(
+                    directStat,
+                    directRegistration,
+                    () => StatsPropagationCoordinator.Invalidate(directStat));
+            }
+
             if (modifier.Target is StatKey<Stat> statKey && statKey.TryGet(StatSet, out Stat stat))
             {
                 var registration = new Stat.ModifierRegistration(modifier, order);
