@@ -137,7 +137,7 @@ Stats 分为独立的 Runtime 与 Source Generator 程序集。Runtime DLL 包�
 
 Stats 作为独立 Unity 安装包发布，只包含 Stats Runtime 与 Stats Analyzer，不复制 Tags DLL。使用者必须先安装 README 和发布说明中标注的最低兼容 Tags 版本；当前 `.unitypackage` 无法自动安装依赖，未来切换到 UPM 时再声明正式包依赖。
 
-Stats Analyzer 自身不依赖 Tags Runtime，并在编译开始时检查最低兼容 Tags Runtime 是否存在。缺少依赖时必须产生带稳定编号的明确诊断，直接提示安装所需的 Tags 版本，而不能只让使用者面对泛化的程序集或类型缺失错误。
+Stats Analyzer 自身不依赖 Tags Runtime，并在引用 Stats Runtime 的消费者编译开始时检查最低兼容 Tags Runtime 是否存在。未引用 Stats Runtime 的独立 Unity 程序集不参与检查；真正缺少依赖时必须产生带稳定编号的明确诊断，直接提示安装所需的 Tags 版本，而不能只让使用者面对泛化的程序集或类型缺失错误。
 
 ### 强类型 StatSet
 
