@@ -6,10 +6,12 @@ Klrpxy Gameplay Stats 用少量领域概念表达角色属性、物品光环、�
 
 ## 安装
 
-Stats v0.3.0 已在 Unity 2022.3.62f3 和 Unity 6000.5.0f1 中完成验证。
+Stats v0.3.1 已在 Unity 2022.3.62f3 和 Unity 6000.5.0f1 中完成验证。
+
+v0.3.1 修复了 v0.3.0 在 Unity Test Framework 等不引用 Stats Runtime 的独立程序集上误报 `KGS003` 的问题；建议 v0.3.0 使用者升级。Stats R3 v0.3.0 与 Core v0.3.1 兼容。
 
 1. 下载并导入 [Klrpxy Gameplay Tags v0.2.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.2.0/Klrpxy.Gameplay.Tags.0.2.0.unitypackage)。
-2. 下载并导入 [Klrpxy Gameplay Stats v0.3.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.3.0/Klrpxy.Gameplay.Stats.0.3.0.unitypackage)。
+2. 下载并导入 [Klrpxy Gameplay Stats v0.3.1](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.3.1/Klrpxy.Gameplay.Stats.0.3.1.unitypackage)。
 
 Stats 安装包不会复制 Tags DLL。请先安装 Tags，再安装 Stats。
 

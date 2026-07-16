@@ -161,9 +161,42 @@ namespace Consumer
 }
 '@ | Set-Content -LiteralPath (Join-Path $validHost 'Assets\Consumer.cs') -Encoding utf8
 
+    $unrelatedAssembly = Join-Path $validHost 'Assets\Unrelated'
+    New-Item -ItemType Directory -Path $unrelatedAssembly -Force | Out-Null
+    @'
+{
+    "name": "Klrpxy.Unrelated",
+    "overrideReferences": true,
+    "precompiledReferences": [],
+    "autoReferenced": false
+}
+'@ | Set-Content -LiteralPath (Join-Path $unrelatedAssembly 'Klrpxy.Unrelated.asmdef') -Encoding utf8
+    @'
+namespace Unrelated
+{
+    public static class IndependentContract { }
+}
+'@ | Set-Content -LiteralPath (Join-Path $unrelatedAssembly 'IndependentContract.cs') -Encoding utf8
+
     $editorLog = Join-Path $validHost 'Editor.log'
     $editorOutput = Invoke-UnityHost $validHost $editorLog
-    if ($editorOutput -match '(?m)error CS\d+')
+    $unrelatedResponseFile = Get-ChildItem `
+        -LiteralPath (Join-Path $validHost 'Library') `
+        -Recurse `
+        -Filter 'Klrpxy.Unrelated.rsp' | Select-Object -First 1
+    if (-not $unrelatedResponseFile)
+    {
+        throw "UNITY_FUNCTIONAL_FAILURE The unrelated assembly response file was not generated. log=$editorLog"
+    }
+
+    $unrelatedResponse = Get-Content -Raw -LiteralPath $unrelatedResponseFile.FullName
+    if ($unrelatedResponse -notmatch '(?m)^-analyzer:.*KlrpxyGameplayStats\.dll' -or
+        $unrelatedResponse -match '(?m)^-r:.*KlrpxyGameplayStats\.Runtime\.dll')
+    {
+        throw "UNITY_FUNCTIONAL_FAILURE The unrelated assembly did not isolate the analyzer from Stats Runtime. response=$($unrelatedResponseFile.FullName)"
+    }
+
+    if ($editorOutput -match '(?m)error (CS|KGS)\d+')
     {
         throw "UNITY_FUNCTIONAL_FAILURE The consumer did not compile. log=$editorLog"
     }

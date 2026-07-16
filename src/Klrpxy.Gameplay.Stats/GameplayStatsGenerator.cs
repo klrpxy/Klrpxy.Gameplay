@@ -34,6 +34,11 @@ namespace Klrpxy.Gameplay.Stats.Generator
 
         public void Execute(GeneratorExecutionContext context)
         {
+            if (!context.Compilation.ReferencedAssemblyNames.Any(reference => string.Equals(reference.Name, "KlrpxyGameplayStats.Runtime", StringComparison.Ordinal)))
+            {
+                return;
+            }
+
             if (!context.Compilation.ReferencedAssemblyNames.Any(reference => string.Equals(reference.Name, "KlrpxyGameplayTags.Runtime", StringComparison.Ordinal) && reference.Version >= new Version(0, 2, 0, 0)))
             {
                 context.ReportDiagnostic(Diagnostic.Create(MissingTagsRuntime, Location.None));

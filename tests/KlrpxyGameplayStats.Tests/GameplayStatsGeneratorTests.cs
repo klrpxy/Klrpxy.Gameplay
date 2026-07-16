@@ -197,6 +197,18 @@ namespace Consumer
         }
 
         [Fact]
+        public void UnrelatedCompilationWithoutStatsRuntimeDoesNotReportTagsDiagnostic()
+        {
+            // 验证 Unity 中未引用 Stats Runtime 的独立程序集不会收到 Tags 安装误报。
+            GeneratorDriverRunResult result = RunGeneratorWithResult(
+                "public static class ConsumerContract { }",
+                includeTagsRuntime: false,
+                includeStatsRuntime: false);
+
+            Assert.Empty(result.Diagnostics);
+        }
+
+        [Fact]
         public void MissingTagsRuntimeReportsInstallationDiagnostic()
         {
             // 验证缺少 Tags Runtime 时会得到明确的安装诊断。
@@ -901,12 +913,16 @@ namespace Consumer
         }
 
         // 使用给定消费者源码运行 Stats Generator，并返回公开的生成诊断结果。
-        private static GeneratorDriverRunResult RunGeneratorWithResult(string source, bool includeTagsRuntime = true, MetadataReference tagsRuntimeReference = null)
+        private static GeneratorDriverRunResult RunGeneratorWithResult(
+            string source,
+            bool includeTagsRuntime = true,
+            MetadataReference tagsRuntimeReference = null,
+            bool includeStatsRuntime = true)
         {
             CSharpCompilation compilation = CSharpCompilation.Create(
                 "ConsumerAssembly_" + Guid.NewGuid().ToString("N"),
                 new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp8), "Consumer.cs") },
-                GetReferences(includeTagsRuntime, tagsRuntimeReference),
+                GetReferences(includeTagsRuntime, tagsRuntimeReference, includeStatsRuntime),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             GeneratorDriver driver = CSharpGeneratorDriver.Create(
                 new ISourceGenerator[] { new GameplayStatsGenerator() },
@@ -966,13 +982,24 @@ namespace Consumer
         }
 
         // 收集消费者编译所需的 .NET、Stats Runtime 与 Tags Runtime 程序集引用。
-        private static IEnumerable<MetadataReference> GetReferences(bool includeTagsRuntime = true, MetadataReference tagsRuntimeReference = null)
+        private static IEnumerable<MetadataReference> GetReferences(
+            bool includeTagsRuntime = true,
+            MetadataReference tagsRuntimeReference = null,
+            bool includeStatsRuntime = true)
         {
             var paths = new HashSet<string>(
                 ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))
                     .Split(Path.PathSeparator),
-                StringComparer.OrdinalIgnoreCase)
-            { typeof(StatSet).Assembly.Location };
+                StringComparer.OrdinalIgnoreCase);
+
+            if (includeStatsRuntime)
+            {
+                paths.Add(typeof(StatSet).Assembly.Location);
+            }
+            else
+            {
+                paths.Remove(typeof(StatSet).Assembly.Location);
+            }
 
             if (includeTagsRuntime)
             {
