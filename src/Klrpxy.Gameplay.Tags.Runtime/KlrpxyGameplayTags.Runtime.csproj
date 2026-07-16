@@ -4,7 +4,7 @@
     <AssemblyName>KlrpxyGameplayTags.Runtime</AssemblyName>
     <RootNamespace>Klrpxy.Gameplay.Tags.Runtime</RootNamespace>
     <LangVersion>8.0</LangVersion>
-    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <AssemblyVersion>0.2.1.0</AssemblyVersion>
     <Nullable>disable</Nullable>
   </PropertyGroup>
 </Project>

@@ -32,4 +32,6 @@ Tags 根类继续使用 `[GenerateGameplayTags]` 显式标记，并必须是 `pu
 
 本次不兼容的作者 interface 变更发布为 `v0.2.0`，安装包命名为 `Klrpxy.Gameplay.Tags.0.2.0.unitypackage`。发布说明必须给出从外部 Tag Table 迁移到类内 `TagTable` 的步骤。
 
+`v0.2.1` 补齐 Stats 所需的 `IGameplayTag`、`IHierarchicalGameplayTag`、`ITagSet`、`ITagQuery` 与非泛型 `TagSetChange` 运行时集成契约。包验证必须检查程序集版本和这些公开类型，避免只验证文件名与 Unity import settings 而再次发布结构正确、二进制不兼容的安装包。
+
 经独立原型验证，runtime DLL 使用公开的泛型实现承载 `TagSetRuntime<TTag>` 与 `TagQueryRuntime<TTag>`；源生成器在每个消费者程序集生成唯一的非 `partial`、`sealed`、私有构造的 `Tag` 类型，以及维持现有调用写法的薄门面。运行时通过生成代码提供的同类或后代匹配行为工作，不依赖消费者的具体 `Tag` 类型。这样既保留受控 Tag 构造和跨命名空间的单一 Tag universe，也让通用集合、查询与变化通知集中在 runtime DLL。公开泛型实现是跨程序集技术约束，不是推荐给游戏代码的 interface。

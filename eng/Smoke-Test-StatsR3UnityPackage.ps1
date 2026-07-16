@@ -10,7 +10,7 @@ param(
 
     [string]$StatsPackagePath,
 
-    [string]$TagsPackagePath = 'artifacts/Klrpxy.Gameplay.Tags.0.2.0.unitypackage',
+    [string]$TagsPackagePath = 'artifacts/Klrpxy.Gameplay.Tags.0.2.1.unitypackage',
 
     [switch]$KeepHost
 )
@@ -123,7 +123,7 @@ try
     {
         Copy-Item -LiteralPath (Join-Path $nugetRoot $dependency) -Destination $r3Root
     }
-    Copy-Item -LiteralPath $TagsPackagePath -Destination (Join-Path $hostRoot 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage')
+    Copy-Item -LiteralPath $TagsPackagePath -Destination (Join-Path $hostRoot 'Klrpxy.Gameplay.Tags.0.2.1.unitypackage')
     Copy-Item -LiteralPath $StatsPackagePath -Destination (Join-Path $hostRoot 'Klrpxy.Gameplay.Stats.unitypackage')
     Copy-Item -LiteralPath $StatsR3PackagePath -Destination (Join-Path $hostRoot 'Klrpxy.Gameplay.Stats.R3.unitypackage')
     @"
@@ -134,7 +134,7 @@ m_EditorVersionWithRevision: $UnityVersion
     $tagsImportLog = Join-Path $hostRoot 'TagsImport.log'
     $statsImportLog = Join-Path $hostRoot 'StatsImport.log'
     $statsR3ImportLog = Join-Path $hostRoot 'StatsR3Import.log'
-    Import-UnityPackage $hostRoot 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage' $tagsImportLog
+    Import-UnityPackage $hostRoot 'Klrpxy.Gameplay.Tags.0.2.1.unitypackage' $tagsImportLog
     Import-UnityPackage $hostRoot 'Klrpxy.Gameplay.Stats.unitypackage' $statsImportLog
     Import-UnityPackage $hostRoot 'Klrpxy.Gameplay.Stats.R3.unitypackage' $statsR3ImportLog
 

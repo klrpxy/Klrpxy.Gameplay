@@ -16,6 +16,15 @@ namespace Klrpxy.Gameplay.Stats.Generator
         private const string RangeStatTypeName = "Klrpxy.Gameplay.Stats.RangeStat";
         private const string ResourceTypeName = "Klrpxy.Gameplay.Stats.Resource";
         private const string StatTypeName = "Klrpxy.Gameplay.Stats.Stat";
+        private const string TagsRuntimeAssemblyName = "KlrpxyGameplayTags.Runtime";
+        private static readonly string[] RequiredTagsRuntimeTypes =
+        {
+            "Klrpxy.Gameplay.Tags.Runtime.IGameplayTag",
+            "Klrpxy.Gameplay.Tags.Runtime.IHierarchicalGameplayTag",
+            "Klrpxy.Gameplay.Tags.Runtime.ITagSet",
+            "Klrpxy.Gameplay.Tags.Runtime.ITagQuery",
+            "Klrpxy.Gameplay.Tags.Runtime.TagSetChange"
+        };
         private static readonly DiagnosticDescriptor InvalidStatMember = new DiagnosticDescriptor(
             "KGS001",
             "无效的 StatSet 成员",
@@ -24,7 +33,7 @@ namespace Klrpxy.Gameplay.Stats.Generator
             DiagnosticSeverity.Error,
             isEnabledByDefault: true);
         private static readonly DiagnosticDescriptor InvalidStatSet = new DiagnosticDescriptor("KGS002", "无效的 StatSet", "类型 '{0}' 必须是顶层、非泛型的 partial StatSet", "GameplayStats", DiagnosticSeverity.Error, true);
-        private static readonly DiagnosticDescriptor MissingTagsRuntime = new DiagnosticDescriptor("KGS003", "缺少 Gameplay Tags Runtime", "Stats 需要兼容的 KlrpxyGameplayTags.Runtime；请先安装 Gameplay Tags v0.2.0 或更高版本", "GameplayStats", DiagnosticSeverity.Error, true);
+        private static readonly DiagnosticDescriptor MissingTagsRuntime = new DiagnosticDescriptor("KGS003", "缺少 Gameplay Tags Runtime", "Stats 需要兼容的 KlrpxyGameplayTags.Runtime；请先安装 Gameplay Tags v0.2.1 或更高版本", "GameplayStats", DiagnosticSeverity.Error, true);
         private static readonly DiagnosticDescriptor GeneratedMemberConflict = new DiagnosticDescriptor("KGS004", "生成成员冲突", "StatSet '{0}' 已声明成员 '{1}'，无法生成同名 StatKey", "GameplayStats", DiagnosticSeverity.Error, true);
 
         public void Initialize(GeneratorInitializationContext context)
@@ -39,7 +48,7 @@ namespace Klrpxy.Gameplay.Stats.Generator
                 return;
             }
 
-            if (!context.Compilation.ReferencedAssemblyNames.Any(reference => string.Equals(reference.Name, "KlrpxyGameplayTags.Runtime", StringComparison.Ordinal) && reference.Version >= new Version(0, 2, 0, 0)))
+            if (!HasCompatibleTagsRuntime(context.Compilation))
             {
                 context.ReportDiagnostic(Diagnostic.Create(MissingTagsRuntime, Location.None));
                 return;
@@ -102,6 +111,23 @@ namespace Klrpxy.Gameplay.Stats.Generator
                     GetHintName(generatedStatSets.Count),
                     SourceText.From(GenerateStatSet(context.Compilation.AssemblyName, symbol, members), Encoding.UTF8));
             }
+        }
+
+        private static bool HasCompatibleTagsRuntime(Compilation compilation)
+        {
+            if (!compilation.ReferencedAssemblyNames.Any(reference =>
+                string.Equals(reference.Name, TagsRuntimeAssemblyName, StringComparison.Ordinal)
+                && reference.Version >= new Version(0, 2, 0, 0)))
+            {
+                return false;
+            }
+
+            return RequiredTagsRuntimeTypes.All(typeName =>
+            {
+                INamedTypeSymbol type = compilation.GetTypeByMetadataName(typeName);
+                return type != null
+                    && string.Equals(type.ContainingAssembly.Name, TagsRuntimeAssemblyName, StringComparison.Ordinal);
+            });
         }
 
         private static bool IsSupportedStatSet(

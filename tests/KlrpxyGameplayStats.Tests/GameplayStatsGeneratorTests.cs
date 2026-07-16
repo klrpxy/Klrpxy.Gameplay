@@ -228,6 +228,20 @@ namespace Consumer
                 includeTagsRuntime: false,
                 tagsRuntimeReference: CreateTagsRuntimeReference("0.1.0.0"));
 
+            Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("KGS003", diagnostic.Id);
+            Assert.Contains("Gameplay Tags v0.2.1", diagnostic.GetMessage());
+        }
+
+        [Fact]
+        public void TagsRuntimeWithoutStatsIntegrationReportsInstallationDiagnostic()
+        {
+            // 验证程序集名称和版本看似兼容、但缺少 Stats 集成类型时仍会得到安装诊断。
+            GeneratorDriverRunResult result = RunGeneratorWithResult(
+                "public static class ConsumerContract { }",
+                includeTagsRuntime: false,
+                tagsRuntimeReference: CreateTagsRuntimeReference("1.0.0.0"));
+
             Assert.Equal("KGS003", Assert.Single(result.Diagnostics).Id);
         }
 

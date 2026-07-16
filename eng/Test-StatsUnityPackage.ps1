@@ -15,7 +15,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$tagsPackagePath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Tags.0.2.0.unitypackage'
+$tagsPackagePath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Tags.0.2.1.unitypackage'
 $statsPackagePath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Stats.unitypackage'
 
 foreach ($unityPath in @($Unity2022Path, $Unity6Path))

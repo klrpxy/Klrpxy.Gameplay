@@ -8,7 +8,7 @@ param(
 
     [string]$StatsPackagePath,
 
-    [string]$TagsPackagePath = 'artifacts/Klrpxy.Gameplay.Tags.0.2.0.unitypackage',
+    [string]$TagsPackagePath = 'artifacts/Klrpxy.Gameplay.Tags.0.2.1.unitypackage',
 
     [switch]$KeepHost
 )
@@ -69,7 +69,7 @@ function Write-HostProject([string]$Path)
 {
     New-Item -ItemType Directory -Path (Join-Path $Path 'Assets') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $Path 'ProjectSettings') -Force | Out-Null
-    Copy-Item -LiteralPath $TagsPackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage')
+    Copy-Item -LiteralPath $TagsPackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Tags.0.2.1.unitypackage')
     Copy-Item -LiteralPath $StatsPackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Stats.unitypackage')
 
     @"
@@ -121,7 +121,7 @@ try
     Write-HostProject $validHost
     $tagsImportLog = Join-Path $validHost 'TagsImport.log'
     $statsImportLog = Join-Path $validHost 'StatsImport.log'
-    Import-UnityPackage $validHost 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage' $tagsImportLog
+    Import-UnityPackage $validHost 'Klrpxy.Gameplay.Tags.0.2.1.unitypackage' $tagsImportLog
     Import-UnityPackage $validHost 'Klrpxy.Gameplay.Stats.unitypackage' $statsImportLog
 
     Copy-Item `
@@ -244,7 +244,7 @@ namespace Consumer
         throw "UNITY_FUNCTIONAL_FAILURE The Stats Runtime was not referenced in the missing-Tags project. log=$negativeEditorLog"
     }
 
-    if ($negativeOutput -notmatch 'KGS003' -or $negativeOutput -notmatch 'Gameplay Tags v0\.2\.0')
+    if ($negativeOutput -notmatch 'KGS003' -or $negativeOutput -notmatch 'Gameplay Tags v0\.2\.1')
     {
         throw "UNITY_FUNCTIONAL_FAILURE The missing-Tags project did not report KGS003 with installation guidance. log=$negativeEditorLog"
     }
