@@ -8,29 +8,46 @@ namespace Klrpxy.Gameplay.Stats
         private readonly WeakReference source;
         private readonly WeakReference group;
         private readonly ITagQuery condition;
+        private readonly ModifierCondition sharedCondition;
 
         internal GroupModifierScopeBuilder(ModifierSource source, StatSubjectGroup group)
-            : this(new WeakReference(source), new WeakReference(group), null)
+            : this(new WeakReference(source), new WeakReference(group), null, null)
         {
         }
 
-        private GroupModifierScopeBuilder(WeakReference source, WeakReference group, ITagQuery condition)
+        private GroupModifierScopeBuilder(
+            WeakReference source,
+            WeakReference group,
+            ITagQuery condition,
+            ModifierCondition sharedCondition)
         {
             this.source = source;
             this.group = group;
             this.condition = condition;
+            this.sharedCondition = sharedCondition;
         }
 
         public GroupStatModifierBuilder Modify(StatKey<Stat> key) =>
-            new GroupStatModifierBuilder(source, group, condition, key);
+            new GroupStatModifierBuilder(source, group, condition, sharedCondition, key);
 
         public GroupRangeStatModifierBuilder Modify(StatKey<RangeStat> key) =>
-            new GroupRangeStatModifierBuilder(source, group, condition, key);
+            new GroupRangeStatModifierBuilder(source, group, condition, sharedCondition, key);
+
+        internal GroupModifierScopeBuilder Where(ModifierCondition next) =>
+            new GroupModifierScopeBuilder(
+                source,
+                group,
+                condition,
+                ModifierCondition.Combine(sharedCondition, next));
 
         public GroupModifierScopeBuilder WhereTargetMatches(ITagQuery query)
         {
             if (query == null) throw new ArgumentNullException(nameof(query));
-            return new GroupModifierScopeBuilder(source, group, TagQueryConjunction.Combine(condition, query));
+            return new GroupModifierScopeBuilder(
+                source,
+                group,
+                TagQueryConjunction.Combine(condition, query),
+                sharedCondition);
         }
 
         public GroupModifierScopeBuilder WhereTargetHas(IGameplayTag tag)

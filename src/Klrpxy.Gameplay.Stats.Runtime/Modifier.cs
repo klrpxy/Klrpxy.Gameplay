@@ -5,7 +5,7 @@ namespace Klrpxy.Gameplay.Stats
 {
     public sealed class Modifier
     {
-        private Modifier(ModifierKind kind, float value, ModifierValue dynamicValue, float valueScale, FloatRange range, int priority, object target, ITagQuery targetCondition = null)
+        private Modifier(ModifierKind kind, float value, ModifierValue dynamicValue, float valueScale, FloatRange range, int priority, object target, ITagQuery targetCondition = null, ModifierCondition condition = null)
         {
             Kind = kind;
             constantValue = value;
@@ -15,6 +15,7 @@ namespace Klrpxy.Gameplay.Stats
             Priority = priority;
             Target = target;
             TargetCondition = targetCondition;
+            Condition = condition;
         }
 
         internal ModifierKind Kind { get; }
@@ -35,11 +36,32 @@ namespace Klrpxy.Gameplay.Stats
 
         internal ITagQuery TargetCondition { get; }
 
+        internal ModifierCondition Condition { get; }
+
         public Modifier WhenTargetMatches(ITagQuery query)
         {
             if (query == null) throw new ArgumentNullException(nameof(query));
-            return new Modifier(Kind, constantValue, DynamicValue, ValueScale, Range, Priority, Target, query);
+            return new Modifier(Kind, constantValue, DynamicValue, ValueScale, Range, Priority, Target, query, Condition);
         }
+
+        internal Modifier When(ModifierCondition condition)
+        {
+            if (condition == null) throw new ArgumentNullException(nameof(condition));
+            return new Modifier(
+                Kind,
+                constantValue,
+                DynamicValue,
+                ValueScale,
+                Range,
+                Priority,
+                Target,
+                TargetCondition,
+                ModifierCondition.Combine(Condition, condition));
+        }
+
+        internal bool Matches(ITagSet tags) =>
+            (TargetCondition == null || TargetCondition.Matches(tags))
+            && (Condition == null || Condition.Read());
 
         public static Modifier Flat(float value, StatKey<Stat> target) => Create(ModifierKind.Flat, value, target, 0);
 
