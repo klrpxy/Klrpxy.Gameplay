@@ -22,5 +22,6 @@
 
   <ItemGroup>
     <None Include="../../samples/Stats/BazaarGameplay.cs" Link="BazaarGameplay.cs.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../samples/Stats/BazaarGameplay.R3.cs" Link="BazaarGameplay.R3.cs.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

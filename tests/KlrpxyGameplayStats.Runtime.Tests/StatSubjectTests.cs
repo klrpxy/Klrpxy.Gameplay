@@ -77,7 +77,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             // 验证 Subject 重复结束时静默移除直接 Modifier，并拒绝后续新增操作。
             var subject = new LifecycleSubject(new LifecycleStatSet());
             var source = new ModifierSource();
-            subject.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), source);
+            source.Modify(subject.StatSet.Health).Add(25f);
             var eventCount = 0;
             subject.StatSet.Health.OnFinalValueChanged += (previous, current) => eventCount++;
 
@@ -87,22 +87,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
 
             Assert.Equal(0, eventCount);
             Assert.Throws<ObjectDisposedException>(() =>
-                subject.AddModifier(Modifier.Flat(10f, LifecycleStatSet.HealthKey), source));
-        }
-
-        [Fact]
-        public void ConditionalSubjectModifierRejectsAnIncompatibleKeyBeforeRegistration()
-        {
-            // 验证条件当前不匹配时，Subject 仍会原子拒绝不属于自身 StatSet 的 Key。
-            var subject = new LifecycleSubject(new LifecycleStatSet());
-            var source = new ModifierSource();
-            Modifier modifier = Modifier.Flat(10f, RangeTestStatSet.DamageKey)
-                .WhenTargetMatches(new NeverMatchesQuery());
-
-            Assert.Throws<InvalidOperationException>(() => subject.AddModifier(modifier, source));
-
-            source.RemoveAllModifiers();
-            Assert.Equal(100f, subject.StatSet.Health.FinalValue);
+                source.Modify(subject.StatSet.Health).Add(10f));
         }
 
         [Fact]
@@ -138,7 +123,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var source = new ModifierSource();
             group.Add(first);
 
-            group.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), source);
+            source.For(group).Modify(LifecycleStatSet.HealthKey).Add(25f);
             group.Add(second);
 
             Assert.Equal(125f, first.StatSet.Health.FinalValue);
@@ -161,7 +146,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             group.Add(scalarSubject);
             group.Add(rangeSubject);
 
-            group.AddModifier(Modifier.Flat(5f, RangeTestStatSet.DamageKey), source);
+            source.For(group).Modify(RangeTestStatSet.DamageKey).Add(5f);
 
             Assert.Equal(100f, scalarSubject.StatSet.Health.FinalValue);
             Assert.Equal(
@@ -182,9 +167,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             firstGroup.Add(subject);
             secondGroup.Add(subject);
 
-            subject.AddModifier(Modifier.Flat(10f, LifecycleStatSet.HealthKey), localSource);
-            firstGroup.AddModifier(Modifier.Flat(20f, LifecycleStatSet.HealthKey), firstGroupSource);
-            secondGroup.AddModifier(Modifier.Percent(50f, LifecycleStatSet.HealthKey), secondGroupSource);
+            localSource.Modify(subject.StatSet.Health).Add(10f);
+            firstGroupSource.For(firstGroup).Modify(LifecycleStatSet.HealthKey).Add(20f);
+            secondGroupSource.For(secondGroup).Modify(LifecycleStatSet.HealthKey).AddPercent(50f);
 
             Assert.Equal(195f, subject.StatSet.Health.FinalValue);
         }
@@ -197,7 +182,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var group = new StatSubjectGroup();
             var source = new ModifierSource();
             group.Add(subject);
-            group.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), source);
+            source.For(group).Modify(LifecycleStatSet.HealthKey).Add(25f);
 
             Assert.Throws<InvalidOperationException>(() => group.Add(subject));
 
@@ -216,12 +201,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             first.StatSet.Health.OnFinalValueChanged += (previous, current) => firstEvents++;
             group.Add(first);
             group.Add(second);
-            ModifierValue value = ModifierValue.From(
-                ValueInput.Final(second.StatSet.Health),
-                current => current);
-
             Assert.Throws<InvalidOperationException>(() =>
-                group.AddModifier(Modifier.Flat(value, LifecycleStatSet.HealthKey), source));
+                source.For(group).Modify(LifecycleStatSet.HealthKey)
+                    .Add(second.StatSet.Health, current => current));
 
             Assert.Equal(100f, first.StatSet.Health.FinalValue);
             Assert.Equal(100f, second.StatSet.Health.FinalValue);
@@ -238,12 +220,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var source = new ModifierSource();
             var eventCount = 0;
             subject.StatSet.Health.OnFinalValueChanged += (previous, current) => eventCount++;
-            group.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), source);
-            group.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.Final(subject.StatSet.Health), current => current),
-                    LifecycleStatSet.HealthKey),
-                source);
+            source.For(group).Modify(LifecycleStatSet.HealthKey).Add(25f);
+            source.For(group).Modify(LifecycleStatSet.HealthKey)
+                .Add(subject.StatSet.Health, current => current);
 
             Assert.Throws<InvalidOperationException>(() => group.Add(subject));
 
@@ -261,8 +240,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var firstSource = new ModifierSource();
             var secondSource = new ModifierSource();
             group.Add(subject);
-            ModifierHandle handle = group.AddModifier(Modifier.Flat(10f, LifecycleStatSet.HealthKey), firstSource);
-            group.AddModifier(Modifier.Flat(20f, LifecycleStatSet.HealthKey), secondSource);
+            ModifierHandle handle = firstSource.For(group).Modify(LifecycleStatSet.HealthKey).Add(10f);
+            secondSource.For(group).Modify(LifecycleStatSet.HealthKey).Add(20f);
 
             handle.Dispose();
             handle.Dispose();
@@ -287,7 +266,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             firstGroup.Add(disposedSubject);
             firstGroup.Add(survivor);
             secondGroup.Add(disposedSubject);
-            firstGroup.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), source);
+            source.For(firstGroup).Modify(LifecycleStatSet.HealthKey).Add(25f);
 
             disposedSubject.Dispose();
 
@@ -302,18 +281,14 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             // 验证 Subject 结束时取消动态 Modifier 与动态边界订阅。
             var subject = new LifecycleSubject(new LifecycleStatSet());
             var source = new ModifierSource();
-            var modifierInput = new ObservableValue(10f);
+            var modifierInput = new Stat(10f);
             var minimum = new ObservableValue(0f);
             var maximum = new ObservableValue(200f);
-            subject.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.External(modifierInput), value => value),
-                    LifecycleStatSet.HealthKey),
-                source);
+            source.Modify(subject.StatSet.Health).Add(modifierInput, value => value);
             subject.StatSet.Health.WithBounds(ValueInput.External(minimum), ValueInput.External(maximum));
 
             subject.Dispose();
-            modifierInput.Value = 20f;
+            modifierInput.BaseValue = 20f;
             maximum.Value = 150f;
 
             Assert.Throws<ObjectDisposedException>(() => subject.StatSet.Health.BaseValue = 80f);
@@ -333,7 +308,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
 
             Assert.Throws<ObjectDisposedException>(() => group.Add(disposedSubject));
             Assert.Throws<ObjectDisposedException>(() =>
-                group.AddModifier(Modifier.Flat(25f, LifecycleStatSet.HealthKey), disposedSource));
+                disposedSource.For(group).Modify(LifecycleStatSet.HealthKey).Add(25f));
             Assert.Equal(100f, liveSubject.StatSet.Health.FinalValue);
         }
 
@@ -458,11 +433,6 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         private sealed class LifecycleSubject : StatSubject<LifecycleStatSet>
         {
             public LifecycleSubject(LifecycleStatSet statSet) : base(statSet) { }
-        }
-
-        private sealed class NeverMatchesQuery : ITagQuery
-        {
-            public bool Matches(ITagSet tags) => false;
         }
 
         private sealed class FakeTag : IGameplayTag

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Klrpxy.Gameplay.Stats
 {
-    public sealed class ModifierValue
+    internal sealed class ModifierValue
     {
         private readonly IValueInput[] inputs;
         private readonly Func<object[], float> calculate;

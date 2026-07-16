@@ -79,7 +79,9 @@ namespace Consumer
         {
             var weapon = new Weapon();
             var source = new ModifierSource();
-            weapon.AddModifier(Modifier.Override(new FloatRange(40f, 20f), WeaponStatSet.DamageKey), source);
+            var group = new StatSubjectGroup().Add(weapon);
+            source.For(group).Modify(WeaponStatSet.DamageKey)
+                .Override(new FloatRange(40f, 20f));
             return weapon.StatSet.Damage.FinalRange.Min == 20f
                 && weapon.StatSet.Damage.FinalRange.Max == 40f;
         }
@@ -603,10 +605,11 @@ namespace Consumer
         {
             var hero = new Hero();
             var source = new ModifierSource();
-            hero.AddModifier(
-                Modifier.Flat(25f, HeroStats.HealthKey)
-                    .WhenTargetMatches(TagQuery.Has(GameTags.Unit.Ally)),
-                source);
+            var group = new StatSubjectGroup().Add(hero);
+            source.For(group)
+                .WhereTargetMatches(TagQuery.Has(GameTags.Unit.Ally))
+                .Modify(HeroStats.HealthKey)
+                .Add(25f);
             bool enabled = hero.StatSet.Health.FinalValue == 125f;
             hero.RemoveTag(GameTags.Unit.Ally);
             bool disabled = hero.StatSet.Health.FinalValue == 100f;
@@ -653,10 +656,10 @@ namespace Consumer
             var source = new ModifierSource();
             group.Add(ally);
             group.Add(neutral);
-            group.AddModifier(
-                Modifier.Flat(25f, HeroStats.HealthKey)
-                    .WhenTargetMatches(TagQuery.Has(GameTags.Unit.Ally)),
-                source);
+            source.For(group)
+                .WhereTargetMatches(TagQuery.Has(GameTags.Unit.Ally))
+                .Modify(HeroStats.HealthKey)
+                .Add(25f);
             bool publicQueryMatchesSubjectTags = TagQuery.Has(GameTags.Unit.Ally).Matches(ally.Tags);
             Klrpxy.Gameplay.Tags.Runtime.TagSetChange observedChange = null;
             neutral.Tags.OnChanged += change => observedChange = change;
@@ -767,11 +770,12 @@ namespace Consumer
         {
             var hero = new Hero();
             var source = new ModifierSource();
-            hero.AddModifier(
-                Modifier.Override(200f, HeroStats.HealthKey)
-                    .WhenTargetMatches(TagQuery.Has(GameTags.State.Enabled)),
-                source);
-            ModifierHandle later = hero.AddModifier(Modifier.Override(300f, HeroStats.HealthKey), source);
+            var group = new StatSubjectGroup().Add(hero);
+            source.For(group)
+                .WhereTargetMatches(TagQuery.Has(GameTags.State.Enabled))
+                .Modify(HeroStats.HealthKey)
+                .Override(200f);
+            ModifierHandle later = source.Modify(hero.StatSet.Health).Override(300f);
             hero.AddTag(GameTags.State.Enabled);
             bool laterStillWins = hero.StatSet.Health.FinalValue == 300f;
             later.Dispose();
@@ -818,8 +822,11 @@ namespace Consumer
         [Fact]
         public void BazaarGameplayUsesOnlyTheIntendedPublicCallSurface()
         {
-            string source = ReadBazaarGameplaySource();
-            SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
+            SyntaxNode[] roots =
+            {
+                CSharpSyntaxTree.ParseText(ReadBazaarGameplaySource()).GetRoot(),
+                CSharpSyntaxTree.ParseText(ReadBazaarR3GameplaySource()).GetRoot()
+            };
             var forbiddenCalls = new HashSet<string>(StringComparer.Ordinal)
             {
                 "Register",
@@ -829,18 +836,18 @@ namespace Consumer
                 "Rebuild"
             };
 
-            string[] usedForbiddenCalls = root.DescendantNodes()
+            string[] usedForbiddenCalls = roots.SelectMany(root => root.DescendantNodes())
                 .OfType<InvocationExpressionSyntax>()
                 .Select(invocation => GetInvokedName(invocation.Expression))
                 .Where(name => name != null && forbiddenCalls.Contains(name))
                 .ToArray();
-            bool restoresBaseValues = root.DescendantNodes()
+            bool restoresBaseValues = roots.SelectMany(root => root.DescendantNodes())
                 .OfType<AssignmentExpressionSyntax>()
                 .Any(assignment => assignment.Left is MemberAccessExpressionSyntax member
                     && member.Name.Identifier.ValueText == "BaseValue");
 
             Assert.Empty(usedForbiddenCalls);
-            Assert.Empty(root.DescendantNodes().OfType<ForEachStatementSyntax>());
+            Assert.Empty(roots.SelectMany(root => root.DescendantNodes()).OfType<ForEachStatementSyntax>());
             Assert.False(restoresBaseValues);
         }
 
@@ -929,6 +936,11 @@ namespace Consumer
         private static string ReadBazaarGameplaySource()
         {
             return File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "BazaarGameplay.cs.txt"));
+        }
+
+        private static string ReadBazaarR3GameplaySource()
+        {
+            return File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "BazaarGameplay.R3.cs.txt"));
         }
 
         private static string GetInvokedName(ExpressionSyntax expression)

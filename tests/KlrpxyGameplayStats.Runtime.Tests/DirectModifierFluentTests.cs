@@ -154,18 +154,10 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var updatedBeforeFailure = new DirectSubject(new DirectStatSet());
             var failing = new DirectSubject(new DirectStatSet());
             var dependencySource = new ModifierSource();
-            updatedBeforeFailure.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.Final(input.StatSet.Health), value => value),
-                    DirectStatSet.HealthKey),
-                dependencySource);
-            failing.AddModifier(
-                Modifier.Multiply(
-                    ModifierValue.From(
-                        ValueInput.Final(input.StatSet.Health),
-                        value => value <= 100f ? 1f : float.MaxValue),
-                    DirectStatSet.HealthKey),
-                dependencySource);
+            dependencySource.Modify(updatedBeforeFailure.StatSet.Health)
+                .Add(input.StatSet.Health, value => value);
+            dependencySource.Modify(failing.StatSet.Health)
+                .Multiply(input.StatSet.Health, value => value <= 100f ? 1f : float.MaxValue);
             var inputChanges = new System.Collections.Generic.List<(float Previous, float Current)>();
             var dependentChanges = new System.Collections.Generic.List<(float Previous, float Current)>();
             input.StatSet.Health.OnFinalValueChanged += (previous, current) => inputChanges.Add((previous, current));

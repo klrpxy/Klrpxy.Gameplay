@@ -110,7 +110,8 @@ namespace Klrpxy.Gameplay.Stats.R3.Tests
             Assert.Equal(33f, first.StatSet.Power.FinalValue);
             Assert.Equal(33f, second.StatSet.Power.FinalValue);
             input.StatSet.Power.BaseValue = 20f;
-            input.AddModifier(Modifier.Flat(10f, TestStatSet.AttackKey), new ModifierSource());
+            var rangeGroup = new StatSubjectGroup().Add(input);
+            new ModifierSource().For(rangeGroup).Modify(TestStatSet.AttackKey).Add(10f);
             input.StatSet.Health.Set(30f);
             Assert.Equal(72f, first.StatSet.Power.FinalValue);
             Assert.Equal(72f, second.StatSet.Power.FinalValue);

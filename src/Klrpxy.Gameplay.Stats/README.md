@@ -30,11 +30,16 @@ public sealed class Hero : StatSubject<HeroStats>
 
 Read `hero.StatSet.Power.FinalValue` for the result of all active rules. Changing a `BaseValue` or a `Resource` automatically updates dependent results.
 
-### 3. Describe rules with Modifier and lifetimes with Source
+### 3. Describe rules in gameplay order and manage their lifetime with Source
 
 ```csharp
 var combat = new ModifierSource();
-hero.AddModifier(Modifier.Flat(5f, HeroStats.PowerKey), combat);
+combat.Modify(hero.StatSet.Power).Add(5f);
+combat.Modify(hero.StatSet.Power).AddPercent(20f);
+
+// A dynamic rule updates automatically when its input changes.
+combat.Modify(hero.StatSet.Power)
+    .Add(hero.StatSet.Shield, shield => shield * 0.5f);
 
 // End combat and remove every effect from this source.
 combat.Dispose();
@@ -50,7 +55,7 @@ var partyAura = new ModifierSource();
 var party = new StatSubjectGroup();
 party.Add(hero);
 party.Add(otherHero);
-party.AddModifier(Modifier.Flat(5f, HeroStats.PowerKey), partyAura);
+partyAura.For(party).Modify(HeroStats.PowerKey).Add(5f);
 ```
 
 Shared rules follow members as they join or leave. Call `party.Dispose()` when the whole group lifetime ends.
@@ -67,13 +72,14 @@ Related dependencies have finished propagating when the event runs, so the callb
 ## Concepts to remember
 
 - `StatSet`: declares a set of stats and resources.
-- Generated keys: target a stat from a `Modifier` with compile-time safety.
+- Generated keys: target a stat in a heterogeneous Group with compile-time safety.
 - `StatSubject` / `StatSubjectGroup`: define a subject and the scope of shared rules.
-- `Modifier`: describes a numeric rule.
-- `ModifierSource`: owns the lifetime of a batch of effects.
+- `ModifierSource`: declares numeric rules and owns the lifetime of a batch of effects.
 - `Resource`: changes through `Set`, `Increase`, and `Decrease`.
 - Final-value events: notify UI or gameplay code after results are stable.
 
-`ModifierHandle` is an advanced escape hatch. Keep and `Dispose` one only when a single Modifier must end before the rest of its Source; most gameplay code only needs to manage the Source.
+`ModifierHandle` is an advanced escape hatch. Keep and `Dispose` one only when a single rule must end before the rest of its Source; most gameplay code only needs to manage the Source.
 
-See [`samples/Stats/BazaarGameplay.cs`](../../samples/Stats/BazaarGameplay.cs) for a complete Bazaar-style example with a Hero, several Item types, a heterogeneous Board, a Tag-filtered aura, temporary effects, combat growth, external input, UI events, and lifetime cleanup.
+The Core package supports fixed and single-input dynamic rules without R3. Install the optional `Klrpxy.Gameplay.Stats.R3` adapter when a rule needs an R3 observable value or condition, or when UI code should observe `FinalValue` through R3.
+
+See [`samples/Stats/BazaarGameplay.cs`](../../samples/Stats/BazaarGameplay.cs) for the Core Bazaar-style example with a Hero, several Item types, a heterogeneous Board, a Tag-filtered aura, temporary effects, combat growth, dynamic input, UI events, and lifetime cleanup. Its optional [`BazaarGameplay.R3.cs`](../../samples/Stats/BazaarGameplay.R3.cs) companion adds an R3 dynamic value, condition, and final-value observation; the Unity R3 smoke runs both contracts as one vertical scenario.

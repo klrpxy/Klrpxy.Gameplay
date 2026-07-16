@@ -134,7 +134,7 @@ namespace Klrpxy.Gameplay.Stats
             return Remove(subject, true);
         }
 
-        public ModifierHandle AddModifier(Modifier modifier, ModifierSource source)
+        internal ModifierHandle AddModifier(Modifier modifier, ModifierSource source)
         {
             threadGuard.Verify();
             ThrowIfDisposed();

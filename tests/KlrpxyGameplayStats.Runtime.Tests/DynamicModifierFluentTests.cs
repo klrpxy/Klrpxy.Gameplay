@@ -38,7 +38,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             Assert.Equal(110f, rangeTarget.StatSet.Value.FinalValue);
             Assert.Equal(120f, resourceTarget.StatSet.Value.FinalValue);
 
-            input.AddModifier(Modifier.Flat(5f, DynamicStatSet.RangeKey), rangeSource);
+            var rangeGroup = new StatSubjectGroup().Add(input);
+            rangeSource.For(rangeGroup).Modify(DynamicStatSet.RangeKey).Add(5f);
             input.StatSet.Resource.Set(20f);
 
             Assert.Equal(115f, rangeTarget.StatSet.Value.FinalValue);

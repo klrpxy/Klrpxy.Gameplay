@@ -139,10 +139,8 @@ m_EditorVersionWithRevision: $UnityVersion
     Import-UnityPackage $hostRoot 'Klrpxy.Gameplay.Stats.R3.unitypackage' $statsR3ImportLog
 
     Copy-Item -LiteralPath (Join-Path $repositoryRoot 'samples\Stats\BazaarGameplay.cs') -Destination (Join-Path $assetsRoot 'BazaarGameplay.cs')
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot 'samples\Stats\BazaarGameplay.R3.cs') -Destination (Join-Path $assetsRoot 'BazaarGameplay.R3.cs')
     @'
-using Klrpxy.Gameplay.Stats;
-using Klrpxy.Gameplay.Stats.R3;
-using R3;
 using UnityEditor;
 using UnityEngine;
 
@@ -153,27 +151,15 @@ namespace Consumer
     {
         static StatsR3SmokeContract()
         {
-            var hero = new Hero();
-            var source = new ModifierSource();
-            var dynamicValue = new ReactiveProperty<float>(5f);
-            var condition = new ReactiveProperty<bool>(false);
-            float observed = -1f;
-
-            using (hero.StatSet.Power.ObserveFinalValue().Subscribe(value => observed = value))
+            bool corePassed = ConsumerContract.VerifyAll();
+            bool r3Passed = BazaarR3ConsumerContract.VerifyR3ConditionsAndObservation();
+            if (corePassed && r3Passed)
             {
-                source.Modify(hero.StatSet.Power).Add(dynamicValue);
-                dynamicValue.Value = 8f;
-                source.Modify(hero.StatSet.Power).Where(condition).Add(10f);
-                condition.Value = true;
-
-                if (hero.StatSet.Power.FinalValue == 28f && observed == 28f)
-                {
-                    Debug.Log("KLRPXY_STATS_R3_UNITY_VALID_PASS");
-                }
-                else
-                {
-                    Debug.LogError("KLRPXY_STATS_R3_UNITY_VALID_FAIL final=" + hero.StatSet.Power.FinalValue + " observed=" + observed);
-                }
+                Debug.Log("KLRPXY_STATS_R3_UNITY_VALID_PASS");
+            }
+            else
+            {
+                Debug.LogError("KLRPXY_STATS_R3_UNITY_VALID_FAIL core=" + corePassed + " r3=" + r3Passed);
             }
         }
     }
