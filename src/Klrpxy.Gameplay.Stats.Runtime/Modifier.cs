@@ -3,7 +3,7 @@ using Klrpxy.Gameplay.Tags.Runtime;
 
 namespace Klrpxy.Gameplay.Stats
 {
-    public sealed class Modifier
+    internal sealed class Modifier
     {
         private Modifier(ModifierKind kind, float value, ModifierValue dynamicValue, float valueScale, FloatRange range, int priority, object target, ITagQuery targetCondition = null, ModifierCondition condition = null)
         {

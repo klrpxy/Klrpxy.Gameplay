@@ -53,16 +53,10 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var source = new ModifierSource();
             var eventCount = 0;
             subject.StatSet.Armor.OnFinalValueChanged += (previous, current) => eventCount++;
-            group.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.Final(subject.StatSet.Power), value => value),
-                    TestStatSet.ArmorKey),
-                source);
-            group.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.Final(subject.StatSet.Power), value => value),
-                    TestStatSet.PowerKey),
-                source);
+            source.For(group).Modify(TestStatSet.ArmorKey)
+                .Add(subject.StatSet.Power, value => value);
+            source.For(group).Modify(TestStatSet.PowerKey)
+                .Add(subject.StatSet.Power, value => value);
 
             Assert.Throws<InvalidOperationException>(() => group.Add(new[] { subject }));
 
@@ -72,11 +66,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             Assert.False(group.Remove(subject));
 
             var retrySource = new ModifierSource();
-            ModifierHandle retry = subject.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.Final(subject.StatSet.Armor), value => value),
-                    TestStatSet.PowerKey),
-                retrySource);
+            ModifierHandle retry = retrySource.Modify(subject.StatSet.Power)
+                .Add(subject.StatSet.Armor, value => value);
             Assert.Equal(30f, subject.StatSet.Power.FinalValue);
             retry.Dispose();
         }
@@ -184,27 +175,17 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         public void BatchCommitFailureRollsBackFinalValuesEventsAndMembership()
         {
             var first = new TestSubject(new TestStatSet());
-            var second = new TestSubject(new TestStatSet());
+            var second = new TestSubject(new TestStatSet(float.MaxValue));
             var group = new StatSubjectGroup();
             var source = new ModifierSource();
-            var input = new ObservableValue(5f);
-            var reads = 0;
             var firstEvents = 0;
             first.StatSet.Power.OnFinalValueChanged += (previous, current) => firstEvents++;
-            group.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.External(input), value =>
-                    {
-                        if (++reads == 2) throw new InvalidOperationException("Calculation failed.");
-                        return value;
-                    }),
-                    TestStatSet.PowerKey),
-                source);
+            source.For(group).Modify(TestStatSet.PowerKey).Multiply(2f);
 
-            Assert.Throws<InvalidOperationException>(() => group.Add(new StatSubject[] { first, second }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => group.Add(new StatSubject[] { first, second }));
 
             Assert.Equal(10f, first.StatSet.Power.FinalValue);
-            Assert.Equal(10f, second.StatSet.Power.FinalValue);
+            Assert.Equal(float.MaxValue, second.StatSet.Power.FinalValue);
             Assert.Equal(0, firstEvents);
             Assert.False(group.Remove(first));
             Assert.False(group.Remove(second));

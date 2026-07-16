@@ -45,7 +45,7 @@ namespace Klrpxy.Gameplay.Stats
 
         public bool RemoveTag(IGameplayTag tag) => tags.Remove(tag);
 
-        public ModifierHandle AddModifier(Modifier modifier, ModifierSource source)
+        internal ModifierHandle AddModifier(Modifier modifier, ModifierSource source)
         {
             threadGuard.Verify();
             ThrowIfDisposed();

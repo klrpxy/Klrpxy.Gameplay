@@ -30,11 +30,16 @@ public sealed class Hero : StatSubject<HeroStats>
 
 读取 `hero.StatSet.Power.FinalValue` 即可得到包含全部规则后的结果。修改 `BaseValue` 或 `Resource` 时，相关结果会自动更新。
 
-### 3. 用 Modifier 描述规则，用 Source 管理持续时间
+### 3. 按玩法语序描述规则，用 Source 管理持续时间
 
 ```csharp
 var combat = new ModifierSource();
-hero.AddModifier(Modifier.Flat(5f, HeroStats.PowerKey), combat);
+combat.Modify(hero.StatSet.Power).Add(5f);
+combat.Modify(hero.StatSet.Power).AddPercent(20f);
+
+// 输入变化时，动态规则会自动更新。
+combat.Modify(hero.StatSet.Power)
+    .Add(hero.StatSet.Shield, shield => shield * 0.5f);
 
 // 战斗结束：一次移除该战斗来源的全部效果。
 combat.Dispose();
@@ -50,7 +55,7 @@ var partyAura = new ModifierSource();
 var party = new StatSubjectGroup();
 party.Add(hero);
 party.Add(otherHero);
-party.AddModifier(Modifier.Flat(5f, HeroStats.PowerKey), partyAura);
+partyAura.For(party).Modify(HeroStats.PowerKey).Add(5f);
 ```
 
 成员加入或离开时，共享规则会自动应用或撤销。结束整组规则时调用 `party.Dispose()`。
@@ -67,13 +72,14 @@ hero.StatSet.Power.OnFinalValueChanged += (previous, current) =>
 ## 需要记住的概念
 
 - `StatSet`：声明一组属性和资源。
-- 生成的 Key：让 `Modifier` 类型安全地指向属性。
+- 生成的 Key：在异构 Group 中类型安全地指向属性。
 - `StatSubject` / `StatSubjectGroup`：表示拥有者与共享规则范围。
-- `Modifier`：描述数值规则。
-- `ModifierSource`：表示一批效果的生命周期。
+- `ModifierSource`：声明数值规则，并表示一批效果的生命周期。
 - `Resource`：直接执行 `Set`、`Increase`、`Decrease`。
 - 最终值事件：在结果稳定后通知 UI 或玩法代码。
 
-`ModifierHandle` 属于高级用法，只在需要提前结束一条 Modifier，而不是结束整个 Source 时保留并 `Dispose`。通常只管理 Source 即可。
+`ModifierHandle` 属于高级用法，只在需要提前结束一条规则，而不是结束整个 Source 时保留并 `Dispose`。通常只管理 Source 即可。
 
-完整的 Bazaar 风格案例见 [`samples/Stats/BazaarGameplay.cs`](../../samples/Stats/BazaarGameplay.cs)。它覆盖 Hero、多种 Item、异构 Board、Tag 条件光环、临时效果、战斗成长、动态外部输入、UI 事件和生命周期清理。
+Core 包无需 R3 即可表达固定值和单输入动态规则。只有规则需要 R3 可观察值、可观察条件，或 UI 需要通过 R3 观察 `FinalValue` 时，才安装可选的 `Klrpxy.Gameplay.Stats.R3` Adapter。
+
+完整的 Bazaar 风格 Core 案例见 [`samples/Stats/BazaarGameplay.cs`](../../samples/Stats/BazaarGameplay.cs)。它覆盖 Hero、多种 Item、异构 Board、Tag 条件光环、临时效果、战斗成长、动态输入、UI 事件和生命周期清理；可选 companion [`BazaarGameplay.R3.cs`](../../samples/Stats/BazaarGameplay.R3.cs) 增加 R3 动态值、条件和最终值观察，Unity R3 烟测会把两个合约作为同一条纵向场景运行。

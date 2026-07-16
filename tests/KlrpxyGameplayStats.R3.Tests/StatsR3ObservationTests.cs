@@ -118,8 +118,8 @@ namespace Klrpxy.Gameplay.Stats.R3.Tests
         {
             var subject = new TestSubject();
             var source = new ModifierSource();
-            subject.AddModifier(Modifier.Flat(5f, TestStatSet.PowerKey), source);
-            subject.AddModifier(Modifier.Flat(10f, TestStatSet.PowerKey), source);
+            source.Modify(subject.StatSet.Power).Add(5f);
+            source.Modify(subject.StatSet.Power).Add(10f);
             var values = new List<float>();
             using (subject.StatSet.Power.ObserveFinalValue().Subscribe(values.Add))
             {

@@ -21,5 +21,24 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             Assert.DoesNotContain("StatsOwner`1", exportedNames);
             Assert.DoesNotContain("StatsOwnerGroup", exportedNames);
         }
+
+        [Fact]
+        public void RuntimeDoesNotExportLegacyModifierRegistrationApi()
+        {
+            var runtime = typeof(Stat).Assembly;
+            string[] exportedNames = runtime
+                .GetExportedTypes()
+                .Select(type => type.Name)
+                .ToArray();
+
+            Assert.DoesNotContain("Modifier", exportedNames);
+            Assert.DoesNotContain("ModifierValue", exportedNames);
+            Assert.DoesNotContain(
+                typeof(StatSubject).GetMethods(),
+                method => method.Name == "AddModifier");
+            Assert.DoesNotContain(
+                typeof(StatSubjectGroup).GetMethods(),
+                method => method.Name == "AddModifier");
+        }
     }
 }

@@ -81,10 +81,10 @@ namespace Consumer
             board.Add(hero);
             board.Add(weapon);
             board.Add(relic);
-            board.AddModifier(
-                Modifier.Flat(20f, BoardStats.HasteKey)
-                    .WhenTargetMatches(TagQuery.Has(GameTags.Item.Quick)),
-                aura);
+            aura.For(board)
+                .WhereTargetMatches(TagQuery.Has(GameTags.Item.Quick))
+                .Modify(BoardStats.HasteKey)
+                .Add(20f);
 
             bool initialTargetsAreCorrect = hero.StatSet.Haste.FinalValue == 0f
                 && weapon.StatSet.Haste.FinalValue == 20f
@@ -113,19 +113,17 @@ namespace Consumer
             var boardAura = new ModifierSource();
             board.Add(hero);
             board.Add(weapon);
-            board.AddModifier(Modifier.Flat(20f, BoardStats.HasteKey), boardAura);
+            boardAura.For(board).Modify(BoardStats.HasteKey).Add(20f);
 
             var temporaryEffect = new ModifierSource();
-            ModifierHandle temporaryPower = hero.AddModifier(
-                Modifier.Flat(15f, HeroStats.PowerKey),
-                temporaryEffect);
+            ModifierHandle temporaryPower = temporaryEffect.Modify(hero.StatSet.Power).Add(15f);
             bool handleApplied = hero.StatSet.Power.FinalValue == 25f;
             temporaryPower.Dispose();
             bool handleEnded = hero.StatSet.Power.FinalValue == 10f;
 
             var combat = new ModifierSource();
-            hero.AddModifier(Modifier.Flat(8f, HeroStats.PowerKey), combat);
-            weapon.AddModifier(Modifier.Flat(4f, WeaponStats.DamageKey), combat);
+            combat.Modify(hero.StatSet.Power).Add(8f);
+            combat.For(board).Modify(WeaponStats.DamageKey).Add(4f);
             bool combatApplied = hero.StatSet.Power.FinalValue == 18f
                 && weapon.StatSet.Damage.FinalRange.Min == 12f
                 && weapon.StatSet.Damage.FinalRange.Max == 16f;
@@ -143,7 +141,7 @@ namespace Consumer
                 && weapon.StatSet.Haste.FinalValue == 0f;
 
             var subjectLifetime = new ModifierSource();
-            hero.AddModifier(Modifier.Flat(50f, HeroStats.PowerKey), subjectLifetime);
+            subjectLifetime.Modify(hero.StatSet.Power).Add(50f);
             hero.Dispose();
             subjectLifetime.Dispose();
 
@@ -159,21 +157,12 @@ namespace Consumer
         public static bool VerifyCombatGrowthAndUi()
         {
             var hero = new Hero();
-            var combatLevel = new ObservableValue(1f);
+            var combatLevel = new Resource(1f);
             var combat = new ModifierSource();
-            hero.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.External(combatLevel), level => level * 5f),
-                    BoardStats.HasteKey),
-                combat);
-            hero.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(
-                        ValueInput.Final(hero.StatSet.Haste),
-                        ValueInput.External(combatLevel),
-                        (haste, level) => haste * level),
-                    HeroStats.PowerKey),
-                combat);
+            combat.Modify(hero.StatSet.Haste)
+                .Add(combatLevel, level => level * 5f);
+            combat.Modify(hero.StatSet.Power)
+                .Add(combatLevel, level => level * level * 5f);
 
             float uiPrevious = -1f;
             float uiCurrent = -1f;
@@ -189,13 +178,17 @@ namespace Consumer
 
             bool roundStartedAtExpectedValues = hero.StatSet.Haste.FinalValue == 5f
                 && hero.StatSet.Power.FinalValue == 15f;
-            combatLevel.Value = 3f;
+            combatLevel.Set(2f);
+            bool middleRoundKeptOriginalFormula = hero.StatSet.Haste.FinalValue == 10f
+                && hero.StatSet.Power.FinalValue == 30f;
+            combatLevel.Set(3f);
 
             return roundStartedAtExpectedValues
+                && middleRoundKeptOriginalFormula
                 && hero.StatSet.Haste.FinalValue == 15f
                 && hero.StatSet.Power.FinalValue == 55f
-                && uiEventCount == 1
-                && uiPrevious == 5f
+                && uiEventCount == 2
+                && uiPrevious == 10f
                 && uiCurrent == 15f
                 && powerObservedByUi == 55f;
         }
@@ -211,13 +204,8 @@ namespace Consumer
             var cycleSource = new ModifierSource();
             try
             {
-                hero.AddModifier(
-                    Modifier.Flat(
-                        ModifierValue.From(
-                            ValueInput.Final(hero.StatSet.Power),
-                            value => value + 1f),
-                        HeroStats.PowerKey),
-                    cycleSource);
+                cycleSource.Modify(hero.StatSet.Power)
+                    .Add(hero.StatSet.Power, value => value + 1f);
             }
             catch (InvalidOperationException)
             {
@@ -229,7 +217,7 @@ namespace Consumer
             endedEffect.Dispose();
             try
             {
-                hero.AddModifier(Modifier.Flat(50f, HeroStats.PowerKey), endedEffect);
+                endedEffect.Modify(hero.StatSet.Power).Add(50f);
             }
             catch (ObjectDisposedException)
             {

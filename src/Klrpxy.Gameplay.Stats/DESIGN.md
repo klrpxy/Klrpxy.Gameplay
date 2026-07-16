@@ -63,14 +63,14 @@ CharacterStatSet.AttackKey;
 EnemyStatSet.DamageKey;
 ```
 
-Modifier 统一使用生成的 StatKey 指定目标，并可以直接添加到 Subject：
+单目标规则直接接收 Stat 实例，调用顺序保持为“来源修改目标，再执行运算”：
 
 ```csharp
 var source = new ModifierSource();
 
-ModifierHandle attackHandle = enemy.AddModifier(
-    Modifier.Percent(20f, CharacterStatSet.AttackKey),
-    source);
+ModifierHandle attackHandle = source
+    .Modify(enemy.StatSet.Attack)
+    .AddPercent(20f);
 
 enemy.StatSet.Health.Decrease(30f);
 enemy.StatSet.Health.Increase(20f);
@@ -83,11 +83,11 @@ var battle = new StatSubjectGroup();
 battle.Add(player);
 battle.Add(enemy);
 
-battle.AddModifier(
-    Modifier
-        .Percent(20f, CharacterStatSet.AttackKey)
-        .WhenTargetMatches(TagQuery.Has(Tags.Unit.Ally)),
-    passiveSource);
+passiveSource
+    .For(battle)
+    .WhereTargetMatches(TagQuery.Has(Tags.Unit.Ally))
+    .Modify(CharacterStatSet.AttackKey)
+    .AddPercent(20f);
 ```
 
 ## 对象与归属
@@ -235,7 +235,7 @@ var criticalChance = new Stat(25f)
     .WithBounds(0f, 100f);
 ```
 
-`WithBounds` 声明 Stat 或 RangeStat 的永久合法范围，只限制计算结果，不修改 BaseValue 或 BaseRange，也不能作为 Modifier 移除。临时玩法限制继续使用 `Modifier.Clamp`。
+`WithBounds` 声明 Stat 或 RangeStat 的永久合法范围，只限制计算结果，不修改 BaseValue 或 BaseRange，也不能作为规则移除。临时玩法限制通过 `source.Modify(stat).Clamp(minimum, maximum)` 声明。
 
 WithBounds 的 Min 和 Max 统一使用 ValueInput，并提供接收 float 的常量便捷重载。边界输入变化时立即更新目标；FinalValue 和 Resource Value 边界依赖进入统一依赖图与循环检测，BaseValue 输入只在基础值变化时传播更新。
 
@@ -355,7 +355,7 @@ ArithmeticValue =
     x 所有 Multiply 之积
 ```
 
-`Modifier.Percent(20f)` 表示增加 `20%`。多个 Percent 相加，多个 Multiply 相乘：
+`source.Modify(stat).AddPercent(20f)` 表示增加 `20%`。多个 Percent 相加，多个 Multiply 相乘：
 
 ```text
 BaseValue = 100
@@ -374,12 +374,12 @@ Clamp 可以是永久的 Stat 固有边界，也可以是可移除的临时 Modi
 
 Override 与 Clamp 的默认优先级均为 `0`。数值越大，优先级越高，并且允许负数；`9999` 这类高值由特殊玩法显式指定。
 
-每次把 Modifier 挂载到 Subject 或 Group 时，对应 ModifierHandle 获得一个全局递增且不可变的内部 Order。Priority 相同时，Order 较大者视为最后添加并胜出。Tag 条件启停、Subject 加入已有 Group 或规则暂时不适用都不会改变 Order；只有新的 AddModifier 调用会产生新 Order。
+每次执行 fluent 终结方法（`Add`、`AddPercent`、`Multiply`、`Override` 或 `Clamp`）时，对应 ModifierHandle 获得一个全局递增且不可变的内部 Order。Priority 相同时，Order 较大者视为最后添加并胜出。Tag 条件启停、Subject 加入已有 Group 或规则暂时不适用都不会改变 Order；只有注册新规则时会产生新 Order。
 
 ### 单值 Stat 的完整计算顺序
 
 ```text
-1. 读取所有 ModifierValue
+1. 读取所有固定值或动态输入
 2. BaseValue + 所有 Flat 之和
 3. 乘以 1 + 所有 Percent 之和
 4. 乘以所有 Multiply 之积
@@ -393,54 +393,46 @@ Override 与 Clamp 的默认优先级均为 `0`。数值越大，优先级越高
 
 Override 只替换算术结果，不能绕过取整、临时 Clamp 或 Stat 固有边界。
 
-## 动态 ModifierValue
+## 动态规则值
 
 ### ValueInput
 
-DynamicModifierValue 从一至三个显式 ValueInput 计算数值：
+Core 公开单输入动态规则。调用者把一个 Stat、RangeStat 或 Resource 交给 fluent 终结方法，并用 selector 计算规则值：
 
 ```csharp
-ModifierValue value = ModifierValue.From(
-    ValueInput.Final(strength),
-    ValueInput.External(comboCount),
-    (strengthValue, combo) =>
-        strengthValue * 2f + combo * 5f);
+source.Modify(enemy.StatSet.Attack)
+    .Add(strength, strengthValue => strengthValue * 2f);
+
+source.Modify(enemy.StatSet.Attack)
+    .Add(health, currentHealth => currentHealth * 0.1f);
 ```
 
-支持三种输入：
-
-```csharp
-ValueInput.Base(level);
-ValueInput.Final(attack);
-ValueInput.Current(health);
-ValueInput.External(comboCount);
-```
-
-外部输入必须是可观察数值，并在变化时通知 Stats 模块。任一输入变化都会重新计算目标 Stat；Modifier 注册移除时，系统自动取消订阅。
+Stat 默认读取 FinalValue，RangeStat 默认读取 FinalRange，Resource 默认读取当前 Value。输入变化会重新计算目标 Stat；规则移除时，系统自动取消内部订阅。Core 不公开多输入公式构造器：可以线性拆分的玩法使用多条单输入规则，不可拆分的外部组合由可选 R3 Adapter 先组合为 `ReadOnlyReactiveProperty<float>`，再传给 `Add`、`AddPercent`、`Multiply` 或 `Override`。R3 Adapter 也提供 `Where(ReadOnlyReactiveProperty<bool>)` 条件和 `ObserveFinalValue()`、`ObserveFinalRange()`、`ObserveValue()` 观察入口；没有安装 R3 时 Core 不引用 R3。
 
 ### 依赖与循环
 
 BaseValue 输入不形成最终值计算环。`FinalValue`、`FinalRange`、`Resource.Current` 与动态边界之间的依赖统一进入内部传播协调器的依赖图，且必须保持无环；添加会形成循环的 Modifier 或动态边界时立即拒绝，并保持原有依赖图和数值不变。
 
-外部输入默认不参与 Stat 循环检查，因此不能在实现内部隐藏地读取目标 Stat。
+Adapter 输入默认不参与 Stat 循环检查，因此组合外部流时不能隐藏地读取同一个目标 Stat。
 
 ## Modifier 生命周期
 
 ### Modifier、ModifierHandle 与 ModifierSource
 
-Modifier 是不可变的计算规则；把它添加到 StatSubject 或 StatSubjectGroup 后，会产生一个 ModifierHandle：
+Modifier 是内部不可变计算规则。公开 fluent 终结方法把规则注册到单个 Stat 或 StatSubjectGroup，并产生一个 ModifierHandle：
 
 ```csharp
-Modifier modifier = Modifier.Flat(
-    10f,
-    EnemyStatSet.AttackKey);
+ModifierHandle handle = source
+    .Modify(enemy.StatSet.Attack)
+    .Add(10f);
 
-ModifierHandle handle = enemy.AddModifier(
-    modifier,
-    source);
+ModifierHandle groupHandle = source
+    .For(battle)
+    .Modify(EnemyStatSet.AttackKey)
+    .Add(10f);
 ```
 
-同一个 Modifier 添加到三个目标，会产生三个不同的 ModifierHandle。Subject Handle 表示一条直接注册；Group Handle 表示 Group 中保存的一条共享规则，不会为每个成员复制 Handle。ModifierSource 表示产生这些 Modifier 的同一个玩法来源，例如装备、技能、Buff 或光环实例。
+每次终结调用产生一个 ModifierHandle。直接 Handle 表示一条 Stat 注册；Group Handle 表示 Group 中保存的一条共享规则，不会为每个成员复制 Handle。ModifierSource 表示产生这些规则的同一个玩法来源，例如装备、技能、Buff 或光环实例。
 
 ### 清理规则
 
@@ -463,15 +455,16 @@ Handle 被移除时，同时从挂载目标和 Source 注销，并取消动态 V
 
 ### TagQuery
 
-Modifier 通过 Tags 模块现有的 TagQuery 声明目标条件：
+Group 规则通过 Tags 模块现有的 TagQuery 声明目标条件：
 
 ```csharp
-Modifier modifier = Modifier
-    .Percent(20f, CharacterStatSet.AttackKey)
-    .WhenTargetMatches(
+source.For(group)
+    .WhereTargetMatches(
         TagQuery.All(
             TagQuery.Has(Tags.Unit.Ally),
-            TagQuery.None(Tags.State.Stunned)));
+            TagQuery.None(Tags.State.Stunned)))
+    .Modify(CharacterStatSet.AttackKey)
+    .AddPercent(20f);
 ```
 
 条件不满足时，直接 Modifier 注册或 Group Modifier 规则保持存在，但不参与计算。目标 TagSet 变化后立即重新判断；条件启用状态变化时重新计算目标 Stat。
@@ -537,7 +530,7 @@ Group Modifier 只在 Group 中保存一份，不复制成每个成员的直接�
 
 后续加入的成员自动考虑 Group 当前的 Modifier。成员离开时停止接收 Group 贡献。Group 添加、移除 Modifier 或成员关系变化时，通知受影响的 Subject 重新计算。
 
-StatSubjectGroup 实现 `IDisposable`。Dispose 会解除所有成员关系、移除全部 Group Modifier 规则、让对应 Handle 从 Source 注销，并通知仍存活的成员重算；Group 不拥有也不会销毁成员 Subject。Group 结束后继续 Add、Remove 或 AddModifier 会抛出 `ObjectDisposedException`。
+StatSubjectGroup 实现 `IDisposable`。Dispose 会解除所有成员关系、移除全部 Group Modifier 规则、让对应 Handle 从 Source 注销，并通知仍存活的成员重算；Group 不拥有也不会销毁成员 Subject。Group 结束后继续 Add、Remove 或通过 fluent API 注册规则会抛出 `ObjectDisposedException`。
 
 ## 更新、事件与错误
 
@@ -595,7 +588,7 @@ Stat、RangeStat 和 Resource 的公开构造方式不接收 Dispatcher。Stats 
 
 ### 非法数值
 
-BaseValue、ModifierValue 和计算结果都不允许 NaN 或正负无穷；遇到非有限值时抛出明确异常。
+BaseValue、动态规则值和计算结果都不允许 NaN 或正负无穷；遇到非有限值时抛出明确异常。
 
 ## 性能约束
 

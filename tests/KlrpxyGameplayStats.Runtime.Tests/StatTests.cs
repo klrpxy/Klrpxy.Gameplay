@@ -27,13 +27,13 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         }
 
         [Fact]
-        public void FlatModifierUpdatesFinalValueThroughGeneratedKey()
+        public void FlatModifierUpdatesFinalValueThroughActualStat()
         {
-            // 验证 Modifier 通过生成的 StatKey 挂载后会立即改变 FinalValue。
+            // 验证 Modifier 通过实际 Stat 挂载后会立即改变 FinalValue。
             var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
 
-            subject.AddModifier(Modifier.Flat(25f, TestStatSet.HealthKey), source);
+            source.Modify(subject.StatSet.Health).Add(25f);
 
             Assert.Equal(125f, subject.StatSet.Health.FinalValue);
         }
@@ -45,9 +45,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
 
-            subject.AddModifier(Modifier.Multiply(2f, TestStatSet.HealthKey), source);
-            subject.AddModifier(Modifier.Percent(50f, TestStatSet.HealthKey), source);
-            subject.AddModifier(Modifier.Flat(10f, TestStatSet.HealthKey), source);
+            source.Modify(subject.StatSet.Health).Multiply(2f);
+            source.Modify(subject.StatSet.Health).AddPercent(50f);
+            source.Modify(subject.StatSet.Health).Add(10f);
 
             Assert.Equal(330f, subject.StatSet.Health.FinalValue);
         }
@@ -59,10 +59,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
 
-            subject.AddModifier(Modifier.Override(120f, TestStatSet.HealthKey), source);
-            ModifierHandle winner = subject.AddModifier(
-                Modifier.Override(150f, TestStatSet.HealthKey, priority: 1),
-                source);
+            source.Modify(subject.StatSet.Health).Override(120f);
+            ModifierHandle winner = source.Modify(subject.StatSet.Health)
+                .Override(150f, priority: 1);
 
             winner.Dispose();
 
@@ -76,8 +75,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var subject = new RoundedTestSubject(new RoundedTestStatSet());
             var source = new ModifierSource();
 
-            subject.AddModifier(Modifier.Override(17.8f, RoundedTestStatSet.ValueKey), source);
-            subject.AddModifier(Modifier.Clamp(0f, 16f, RoundedTestStatSet.ValueKey), source);
+            source.Modify(subject.StatSet.Value).Override(17.8f);
+            source.Modify(subject.StatSet.Value).Clamp(0f, 16f);
 
             Assert.Equal(15f, subject.StatSet.Value.FinalValue);
         }
@@ -90,13 +89,13 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var source = new ModifierSource();
 
             source.RemoveAllModifiers();
-            subject.AddModifier(Modifier.Flat(25f, TestStatSet.HealthKey), source);
+            source.Modify(subject.StatSet.Health).Add(25f);
             source.RemoveAllModifiers();
             source.Dispose();
 
             Assert.Equal(100f, subject.StatSet.Health.FinalValue);
             Assert.Throws<ObjectDisposedException>(() =>
-                subject.AddModifier(Modifier.Flat(50f, TestStatSet.HealthKey), source));
+                source.Modify(subject.StatSet.Health).Add(50f));
             Assert.Equal(100f, subject.StatSet.Health.FinalValue);
         }
 
@@ -132,13 +131,13 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var rejected = false;
-            subject.AddModifier(Modifier.Flat(25f, TestStatSet.HealthKey), source);
+            source.Modify(subject.StatSet.Health).Add(25f);
             subject.StatSet.Health.OnFinalValueChanged += (previous, current) =>
             {
                 if (current == 100f)
                 {
                     rejected = Assert.Throws<ObjectDisposedException>(() =>
-                        subject.AddModifier(Modifier.Flat(10f, TestStatSet.HealthKey), source)) != null;
+                        source.Modify(subject.StatSet.Health).Add(10f)) != null;
                 }
             };
 
@@ -155,8 +154,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var changes = new System.Collections.Generic.List<(float Previous, float Current)>();
-            subject.AddModifier(Modifier.Flat(10f, TestStatSet.HealthKey), source);
-            subject.AddModifier(Modifier.Flat(20f, TestStatSet.HealthKey), source);
+            source.Modify(subject.StatSet.Health).Add(10f);
+            source.Modify(subject.StatSet.Health).Add(20f);
             subject.StatSet.Health.OnFinalValueChanged += (previous, current) => changes.Add((previous, current));
 
             source.RemoveAllModifiers();
@@ -171,9 +170,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var bonus = new Stat(10f);
-            ModifierValue value = ModifierValue.From(ValueInput.Final(bonus), input => input * 2f);
 
-            subject.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
+            source.Modify(subject.StatSet.Health).Add(bonus, input => input * 2f);
             bonus.BaseValue = 20f;
 
             Assert.Equal(140f, subject.StatSet.Health.FinalValue);
@@ -186,39 +184,29 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var first = new TestSubject(new TestStatSet());
             var second = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
-            first.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.Final(second.StatSet.Health), value => value),
-                    TestStatSet.HealthKey),
-                source);
+            source.Modify(first.StatSet.Health).Add(second.StatSet.Health, value => value);
 
-            Assert.Throws<InvalidOperationException>(() => second.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.Final(first.StatSet.Health), value => value),
-                    TestStatSet.HealthKey),
-                source));
+            Assert.Throws<InvalidOperationException>(() =>
+                source.Modify(second.StatSet.Health).Add(first.StatSet.Health, value => value));
 
             Assert.Equal(200f, first.StatSet.Health.FinalValue);
             Assert.Equal(100f, second.StatSet.Health.FinalValue);
         }
 
         [Fact]
-        public void DynamicModifierCombinesThreeDeclaredInputsIncludingExternalValue()
+        public void ThreeDynamicModifiersComposeThreeDeclaredInputs()
         {
-            // 验证动态 Modifier 可组合三个显式输入，并响应外部可观察值变化。
+            // 验证三个单输入动态 Modifier 可组合，并响应任一输入变化。
             var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var first = new Stat(10f);
             var second = new Resource(5f);
-            var external = new ObservableValue(2f);
-            ModifierValue value = ModifierValue.From(
-                ValueInput.Final(first),
-                ValueInput.Current(second),
-                ValueInput.External(external),
-                (a, b, c) => a + b + c);
-            subject.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
+            var third = new Stat(2f);
+            source.Modify(subject.StatSet.Health).Add(first, value => value);
+            source.Modify(subject.StatSet.Health).Add(second, value => value);
+            source.Modify(subject.StatSet.Health).Add(third, value => value);
 
-            external.Value = 10f;
+            third.BaseValue = 10f;
 
             Assert.Equal(125f, subject.StatSet.Health.FinalValue);
         }
@@ -230,30 +218,26 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var range = new RangeStat(10f, 25f);
-            ModifierValue value = ModifierValue.From(
-                ValueInput.Final(range),
-                current => current.Max - current.Min);
 
-            subject.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
+            source.Modify(subject.StatSet.Health)
+                .Add(range, current => current.Max - current.Min);
 
             Assert.Equal(115f, subject.StatSet.Health.FinalValue);
         }
 
         [Fact]
-        public void DynamicModifierCombinesRangeAndScalarInputs()
+        public void SeparateDynamicModifiersComposeRangeAndScalarInputs()
         {
-            // 验证 Range Final 可以与其他显式输入组合成动态 ModifierValue。
+            // 验证 Range Final 与标量输入可以用两条单输入规则组合。
             var subject = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
             var range = new RangeStat(10f, 25f);
-            var bonus = new ObservableValue(5f);
-            ModifierValue value = ModifierValue.From(
-                ValueInput.Final(range),
-                ValueInput.External(bonus),
-                (current, extra) => current.Max - current.Min + extra);
+            var bonus = new Stat(5f);
+            source.Modify(subject.StatSet.Health)
+                .Add(range, current => current.Max - current.Min);
+            source.Modify(subject.StatSet.Health).Add(bonus, value => value);
 
-            subject.AddModifier(Modifier.Flat(value, TestStatSet.HealthKey), source);
-            bonus.Value = 10f;
+            bonus.BaseValue = 10f;
 
             Assert.Equal(125f, subject.StatSet.Health.FinalValue);
         }
@@ -286,16 +270,10 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var right = new TestSubject(new TestStatSet());
             var target = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
-            left.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
-            right.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
-            target.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(
-                        ValueInput.Final(left.StatSet.Health),
-                        ValueInput.Final(right.StatSet.Health),
-                        (a, b) => a + b),
-                    TestStatSet.HealthKey),
-                source);
+            source.Modify(left.StatSet.Health).Add(input, value => value);
+            source.Modify(right.StatSet.Health).Add(input, value => value);
+            source.Modify(target.StatSet.Health).Add(left.StatSet.Health, value => value);
+            source.Modify(target.StatSet.Health).Add(right.StatSet.Health, value => value);
             var changes = new System.Collections.Generic.List<(float Previous, float Current)>();
             target.StatSet.Health.OnFinalValueChanged += (previous, current) => changes.Add((previous, current));
 
@@ -313,16 +291,10 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var right = new TestSubject(new TestStatSet());
             var target = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
-            left.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
-            right.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.Final(input), value => value), TestStatSet.HealthKey), source);
-            target.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(
-                        ValueInput.Final(left.StatSet.Health),
-                        ValueInput.Final(right.StatSet.Health),
-                        (a, b) => a - b),
-                    TestStatSet.HealthKey),
-                source);
+            source.Modify(left.StatSet.Health).Add(input, value => value);
+            source.Modify(right.StatSet.Health).Add(input, value => value);
+            source.Modify(target.StatSet.Health).Add(left.StatSet.Health, value => value);
+            source.Modify(target.StatSet.Health).Add(right.StatSet.Health, value => -value);
             var eventCount = 0;
             target.StatSet.Health.OnFinalValueChanged += (previous, current) => eventCount++;
 
@@ -333,28 +305,22 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         }
 
         [Fact]
-        public void ExternalInputChangePublishesAfterEntireGraphRecalculates()
+        public void InputChangePublishesAfterEntireGraphRecalculates()
         {
-            // 验证外部可观察输入的一次修改只开启一轮传播并公开最终值。
-            var input = new ObservableValue(10f);
+            // 验证公开 Stat 输入的一次修改只开启一轮传播并公开最终值。
+            var input = new Stat(10f);
             var left = new TestSubject(new TestStatSet());
             var right = new TestSubject(new TestStatSet());
             var target = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
-            left.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.External(input), value => value), TestStatSet.HealthKey), source);
-            right.AddModifier(Modifier.Flat(ModifierValue.From(ValueInput.External(input), value => value), TestStatSet.HealthKey), source);
-            target.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(
-                        ValueInput.Final(left.StatSet.Health),
-                        ValueInput.Final(right.StatSet.Health),
-                        (a, b) => a + b),
-                    TestStatSet.HealthKey),
-                source);
+            source.Modify(left.StatSet.Health).Add(input, value => value);
+            source.Modify(right.StatSet.Health).Add(input, value => value);
+            source.Modify(target.StatSet.Health).Add(left.StatSet.Health, value => value);
+            source.Modify(target.StatSet.Health).Add(right.StatSet.Health, value => value);
             var changes = new System.Collections.Generic.List<(float Previous, float Current)>();
             target.StatSet.Health.OnFinalValueChanged += (previous, current) => changes.Add((previous, current));
 
-            input.Value = 20f;
+            input.BaseValue = 20f;
 
             Assert.Equal(new[] { (320f, 340f) }, changes);
         }
@@ -384,18 +350,12 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var first = new TestSubject(new TestStatSet());
             var second = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
-            ModifierHandle handle = first.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.Final(second.StatSet.Health), value => value),
-                    TestStatSet.HealthKey),
-                source);
+            ModifierHandle handle = source.Modify(first.StatSet.Health)
+                .Add(second.StatSet.Health, value => value);
 
             handle.Dispose();
-            second.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.Final(first.StatSet.Health), value => value),
-                    TestStatSet.HealthKey),
-                source);
+            source.Modify(second.StatSet.Health)
+                .Add(first.StatSet.Health, value => value);
             first.StatSet.Health.BaseValue = 120f;
 
             Assert.Equal(120f, first.StatSet.Health.FinalValue);
@@ -412,6 +372,14 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             statSet => ((TestStatSet)statSet).Health);
 
         public Stat Health { get; } = new Stat(100f);
+
+        protected override void AppendGeneratedMembers(System.Collections.Generic.ICollection<StatMemberDescriptor> members)
+        {
+            members.Add(CreateMember(
+                "Tests::TestStatSet.Health",
+                StatMemberKind.Stat,
+                statSet => ((TestStatSet)statSet).Health));
+        }
     }
 
     public sealed class TestSubject : StatSubject<TestStatSet>
@@ -430,6 +398,14 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             statSet => ((RoundedTestStatSet)statSet).Value);
 
         public Stat Value { get; } = new Stat(10.5f, RoundingMode.Floor).WithBounds(0f, 15.5f);
+
+        protected override void AppendGeneratedMembers(System.Collections.Generic.ICollection<StatMemberDescriptor> members)
+        {
+            members.Add(CreateMember(
+                "Tests::RoundedTestStatSet.Value",
+                StatMemberKind.Stat,
+                statSet => ((RoundedTestStatSet)statSet).Value));
+        }
     }
 
     public sealed class RoundedTestSubject : StatSubject<RoundedTestStatSet>

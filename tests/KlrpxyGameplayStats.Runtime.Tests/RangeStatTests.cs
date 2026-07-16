@@ -22,10 +22,10 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             // 验证 RangeStat 的完整范围 Override 会覆盖算术结果并保持 Min 不大于 Max。
             var subject = new RangeTestSubject(new RangeTestStatSet());
             var source = new ModifierSource();
+            var group = new StatSubjectGroup().Add(subject);
 
-            subject.AddModifier(
-                Modifier.Override(new FloatRange(40f, 20f), RangeTestStatSet.DamageKey),
-                source);
+            source.For(group).Modify(RangeTestStatSet.DamageKey)
+                .Override(new FloatRange(40f, 20f));
 
             Assert.Equal((20f, 40f), (subject.StatSet.Damage.FinalRange.Min, subject.StatSet.Damage.FinalRange.Max));
         }
@@ -36,11 +36,12 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             // 验证 RangeStat 两端共享固定算术阶段，Clamp 可把区间收缩为确定值。
             var subject = new RangeTestSubject(new RangeTestStatSet());
             var source = new ModifierSource();
+            var group = new StatSubjectGroup().Add(subject);
 
-            subject.AddModifier(Modifier.Flat(5f, RangeTestStatSet.DamageKey), source);
-            subject.AddModifier(Modifier.Percent(50f, RangeTestStatSet.DamageKey), source);
-            subject.AddModifier(Modifier.Multiply(2f, RangeTestStatSet.DamageKey), source);
-            subject.AddModifier(Modifier.Clamp(30f, 40f, RangeTestStatSet.DamageKey), source);
+            source.For(group).Modify(RangeTestStatSet.DamageKey).Add(5f);
+            source.For(group).Modify(RangeTestStatSet.DamageKey).AddPercent(50f);
+            source.For(group).Modify(RangeTestStatSet.DamageKey).Multiply(2f);
+            source.For(group).Modify(RangeTestStatSet.DamageKey).Clamp(30f, 40f);
 
             Assert.Equal((40f, 40f), (subject.StatSet.Damage.FinalRange.Min, subject.StatSet.Damage.FinalRange.Max));
         }
@@ -51,10 +52,10 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             // 验证 RangeStat 在 Override 后对两端取整并由固有边界收缩为合法区间。
             var subject = new RoundedRangeTestSubject(new RoundedRangeTestStatSet());
             var source = new ModifierSource();
+            var group = new StatSubjectGroup().Add(subject);
 
-            subject.AddModifier(
-                Modifier.Override(new FloatRange(20.8f, 10.2f), RoundedRangeTestStatSet.ValueKey),
-                source);
+            source.For(group).Modify(RoundedRangeTestStatSet.ValueKey)
+                .Override(new FloatRange(20.8f, 10.2f));
 
             Assert.Equal((12f, 18f), (subject.StatSet.Value.FinalRange.Min, subject.StatSet.Value.FinalRange.Max));
         }
@@ -80,16 +81,14 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var rangeSubject = new RangeTestSubject(new RangeTestStatSet());
             var target = new TestSubject(new TestStatSet());
             var source = new ModifierSource();
-            target.AddModifier(
-                Modifier.Flat(
-                    ModifierValue.From(ValueInput.Final(rangeSubject.StatSet.Damage), range => range.Max),
-                    TestStatSet.HealthKey),
-                source);
+            source.Modify(target.StatSet.Health)
+                .Add(rangeSubject.StatSet.Damage, range => range.Max);
             var observedTarget = -1f;
             rangeSubject.StatSet.Damage.OnFinalRangeChanged += (previous, current) =>
                 observedTarget = target.StatSet.Health.FinalValue;
 
-            rangeSubject.AddModifier(Modifier.Flat(5f, RangeTestStatSet.DamageKey), source);
+            var rangeGroup = new StatSubjectGroup().Add(rangeSubject);
+            source.For(rangeGroup).Modify(RangeTestStatSet.DamageKey).Add(5f);
 
             Assert.Equal(120f, observedTarget);
         }
@@ -129,6 +128,14 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             statSet => ((RoundedRangeTestStatSet)statSet).Value);
 
         public RangeStat Value { get; } = new RangeStat(10f, 15f, RoundingMode.Floor).WithBounds(12f, 18f);
+
+        protected override void AppendGeneratedMembers(System.Collections.Generic.ICollection<StatMemberDescriptor> members)
+        {
+            members.Add(CreateMember(
+                "Tests::RoundedRangeTestStatSet.Value",
+                StatMemberKind.RangeStat,
+                statSet => ((RoundedRangeTestStatSet)statSet).Value));
+        }
     }
 
     public sealed class RoundedRangeTestSubject : StatSubject<RoundedRangeTestStatSet>
