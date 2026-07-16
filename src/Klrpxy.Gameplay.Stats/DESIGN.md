@@ -232,12 +232,13 @@ FinalValue 的类型仍是 `float`，但结果保证为整数值，例如 `87f`�
 
 ```csharp
 var criticalChance = new Stat(25f)
-    .WithBounds(0f, 100f);
+    .WithMinimum(0f)
+    .WithMaximum(100f);
 ```
 
-`WithBounds` 声明 Stat 或 RangeStat 的永久合法范围，只限制计算结果，不修改 BaseValue 或 BaseRange，也不能作为规则移除。临时玩法限制通过 `source.Modify(stat).Clamp(minimum, maximum)` 声明。
+`WithMinimum` 和 `WithMaximum` 分别声明 Stat 或 RangeStat 的永久合法下限与上限，可以单独使用或按任意顺序组合。它们只限制计算结果，不修改 BaseValue 或 BaseRange，也不能作为规则移除。临时玩法限制通过 `source.Modify(stat).Clamp(minimum, maximum)` 声明。
 
-WithBounds 的 Min 和 Max 统一使用 ValueInput，并提供接收 float 的常量便捷重载。边界输入变化时立即更新目标；FinalValue 和 Resource Value 边界依赖进入统一依赖图与循环检测，BaseValue 输入只在基础值变化时传播更新。
+两个端点都接受 `ValueInput`，并提供接收 `float` 的常量便捷重载。同一端点可以被重新声明；非法交叉不会替换上一组有效边界。动态边界输入变化时立即更新目标；暂时形成非法交叉时保留上一次有效结果，并在输入重新合法后自动恢复。FinalValue 和 Resource Value 边界依赖进入统一依赖图与循环检测，BaseValue 输入只在基础值变化时传播更新。
 
 整数 Stat 的边界会先转换为合法整数范围：下限向上取整，上限向下取整。
 
@@ -260,7 +261,7 @@ Health.Decrease(30f);
 Health.Increase(20f);
 ```
 
-Resource 通过 `WithBounds(min, max, policy)` 接受常量、Stat 或外部动态值提供的永久边界。与 Stat 不同，Resource 的边界策略会直接修改唯一的 Value。第一版支持两种策略：`Clamp` 丢弃超出新边界的值且不在边界扩大时恢复；`PreserveRatio` 在边界变化时保持 Resource 的填充比例。默认使用 `Clamp`，不支持需要额外隐藏值的策略。
+Resource 同样通过 `WithMinimum` 和 `WithMaximum` 接受常量、Stat 或外部动态值提供的永久边界。与 Stat 不同，Resource 的边界变化会直接约束唯一的 Value。默认行为是 Clamp：丢弃超出新边界的值，且不在边界扩大时恢复。需要在两个边界变化时保持填充比例，可追加调用 `PreserveRatioWhenBoundsChange()`；不支持需要额外隐藏值的策略。
 
 只需要固定下界而没有上界的 Resource 使用便捷接口表达，不需要伪造一个极大上限：
 
@@ -269,9 +270,9 @@ var shield = new Resource(0f)
     .WithMinimum(0f);
 ```
 
-`WithMinimum(float)` 等价于只有固定下界的 `WithBounds`，默认采用 Clamp；第一版不增加动态 minimum 专用重载，动态下界继续使用完整的 `WithBounds`。
+`WithMinimum` 和 `WithMaximum` 都支持固定值与动态 `ValueInput`，并可以独立使用。
 
-Resource 可以配置 RoundingRule，默认 `None`。每次 Set、Increase、Decrease 或 PreserveRatio 调整都先对候选值取整，再应用 WithBounds，并只在 Value 实际变化时通知观察者。需要逐帧累计小数的 Resource 使用 `None`，或由外部玩法系统累计后再写入。
+Resource 可以配置 RoundingRule，默认 `None`。每次 Set、Increase、Decrease 或保持比例调整都先对候选值取整，再应用固有边界，并只在 Value 实际变化时通知观察者。需要逐帧累计小数的 Resource 使用 `None`，或由外部玩法系统累计后再写入。
 
 Resource 可以通过 `ValueInput.Current(resource)` 参与其他 Stat 的动态计算，但 Resource 本身不生成 StatKey，也不能成为 Modifier 的目标。更多依据见 [current resource semantics research](docs/resource-semantics-research.md)。
 

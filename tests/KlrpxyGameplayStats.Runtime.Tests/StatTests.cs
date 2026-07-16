@@ -27,6 +27,42 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         }
 
         [Fact]
+        public void FixedMinimumLimitsStatWithoutAMaximum()
+        {
+            var stat = new Stat(-10f).WithMinimum(0f);
+
+            Assert.Equal(0f, stat.FinalValue);
+            stat.BaseValue = 250f;
+            Assert.Equal(250f, stat.FinalValue);
+        }
+
+        [Fact]
+        public void FixedMaximumLimitsStatWithoutAMinimum()
+        {
+            var stat = new Stat(250f).WithMaximum(100f);
+
+            Assert.Equal(100f, stat.FinalValue);
+            stat.BaseValue = -10f;
+            Assert.Equal(-10f, stat.FinalValue);
+        }
+
+        [Fact]
+        public void FixedEndpointsAreOrderIndependentAndInvalidReplacementKeepsPreviousBounds()
+        {
+            var stat = new Stat(50f)
+                .WithMaximum(100f)
+                .WithMinimum(0f);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => stat.WithMinimum(200f));
+            stat.BaseValue = -10f;
+            Assert.Equal(0f, stat.FinalValue);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => stat.WithMaximum(-5f));
+            stat.BaseValue = 150f;
+            Assert.Equal(100f, stat.FinalValue);
+        }
+
+        [Fact]
         public void FlatModifierUpdatesFinalValueThroughActualStat()
         {
             // 验证 Modifier 通过实际 Stat 挂载后会立即改变 FinalValue。
@@ -331,16 +367,77 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             // 验证 Stat 动态边界自动传播，并在绑定前拒绝依赖自身 FinalValue 的环。
             var maximum = new Stat(100f);
             var minimum = new ObservableValue(0f);
-            var stat = new Stat(150f).WithBounds(ValueInput.External(minimum), ValueInput.Final(maximum));
+            var stat = new Stat(150f)
+                .WithMinimum(ValueInput.External(minimum))
+                .WithMaximum(ValueInput.Final(maximum));
 
             maximum.BaseValue = 80f;
 
             Assert.Equal(80f, stat.FinalValue);
             var unbounded = new Stat(100f);
             Assert.Throws<InvalidOperationException>(() =>
-                unbounded.WithBounds(ValueInput.External(minimum), ValueInput.Final(unbounded)));
+                unbounded
+                    .WithMinimum(ValueInput.External(minimum))
+                    .WithMaximum(ValueInput.Final(unbounded)));
             unbounded.BaseValue = 200f;
             Assert.Equal(200f, unbounded.FinalValue);
+        }
+
+        [Fact]
+        public void DynamicMinimumTracksItsInputWithoutAMaximum()
+        {
+            var minimum = new Stat(0f);
+            var stat = new Stat(-10f).WithMinimum(ValueInput.Final(minimum));
+
+            minimum.BaseValue = 25f;
+
+            Assert.Equal(25f, stat.FinalValue);
+            stat.BaseValue = 250f;
+            Assert.Equal(250f, stat.FinalValue);
+        }
+
+        [Fact]
+        public void DynamicMaximumTracksItsInputWithoutAMinimum()
+        {
+            var maximum = new Stat(100f);
+            var stat = new Stat(250f).WithMaximum(ValueInput.Final(maximum));
+
+            maximum.BaseValue = 80f;
+
+            Assert.Equal(80f, stat.FinalValue);
+            stat.BaseValue = -10f;
+            Assert.Equal(-10f, stat.FinalValue);
+        }
+
+        [Fact]
+        public void InvalidDynamicEndpointsKeepTheLastValidBoundsAndRecoverTogether()
+        {
+            var minimum = new ObservableValue(0f);
+            var maximum = new ObservableValue(100f);
+            var stat = new Stat(-10f)
+                .WithMinimum(ValueInput.External(minimum))
+                .WithMaximum(ValueInput.External(maximum));
+
+            Assert.Throws<InvalidOperationException>(() => minimum.Value = 120f);
+            Assert.Equal(0f, stat.FinalValue);
+
+            maximum.Value = 150f;
+            Assert.Equal(120f, stat.FinalValue);
+        }
+
+        [Fact]
+        public void ReplacingTheOtherEndpointRecoversAValidDynamicBound()
+        {
+            var minimum = new ObservableValue(0f);
+            var stat = new Stat(-10f)
+                .WithMinimum(ValueInput.External(minimum))
+                .WithMaximum(100f);
+
+            Assert.Throws<InvalidOperationException>(() => minimum.Value = 120f);
+
+            stat.WithMaximum(150f);
+
+            Assert.Equal(120f, stat.FinalValue);
         }
 
         [Fact]
@@ -397,7 +494,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             "Tests::RoundedTestStatSet.Value",
             statSet => ((RoundedTestStatSet)statSet).Value);
 
-        public Stat Value { get; } = new Stat(10.5f, RoundingMode.Floor).WithBounds(0f, 15.5f);
+        public Stat Value { get; } = new Stat(10.5f, RoundingMode.Floor)
+            .WithMinimum(0f)
+            .WithMaximum(15.5f);
 
         protected override void AppendGeneratedMembers(System.Collections.Generic.ICollection<StatMemberDescriptor> members)
         {

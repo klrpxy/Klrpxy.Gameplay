@@ -119,9 +119,4 @@ namespace Klrpxy.Gameplay.Stats
         object DependencyNode { get; }
     }
 
-    public enum ResourceBoundPolicy
-    {
-        Clamp,
-        PreserveRatio
-    }
 }

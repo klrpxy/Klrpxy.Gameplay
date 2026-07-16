@@ -130,8 +130,12 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var target = new DynamicSubject(new DynamicStatSet(100f));
             var source = new ModifierSource();
             StatModifierBuilder builder = source.Modify(target.StatSet.Value);
-            target.StatSet.Range.WithBounds(ValueInput.Base(target.StatSet.Value), ValueInput.Final(target.StatSet.Value));
-            target.StatSet.Resource.WithBounds(0f, ValueInput.Final(target.StatSet.Value));
+            target.StatSet.Range
+                .WithMinimum(ValueInput.Base(target.StatSet.Value))
+                .WithMaximum(ValueInput.Final(target.StatSet.Value));
+            target.StatSet.Resource
+                .WithMinimum(0f)
+                .WithMaximum(ValueInput.Final(target.StatSet.Value));
 
             Assert.Throws<System.InvalidOperationException>(() =>
                 builder.Add(target.StatSet.Value, value => value));

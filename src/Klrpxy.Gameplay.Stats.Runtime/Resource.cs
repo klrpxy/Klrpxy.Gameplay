@@ -5,15 +5,16 @@ namespace Klrpxy.Gameplay.Stats
     public sealed class Resource
     {
         private readonly RoundingMode rounding;
-        private bool hasBounds;
+        private bool hasMinimum;
         private bool hasMaximum;
         private float maximum;
         private float minimum;
         private float value;
-        private ResourceBoundPolicy boundPolicy;
+        private bool preserveRatioWhenBoundsChange;
         private ValueInput<float> maximumInput;
         private IDisposable maximumSubscription;
-        private IDisposable boundsDependency;
+        private IDisposable maximumDependency;
+        private IDisposable minimumDependency;
         private ValueInput<float> minimumInput;
         private IDisposable minimumSubscription;
         private readonly GameplayThreadGuard threadGuard = new GameplayThreadGuard();
@@ -40,6 +41,14 @@ namespace Klrpxy.Gameplay.Stats
         public event Action<float, float> OnValueChanged;
 
         internal event Action ValueChanged;
+
+        public Resource PreserveRatioWhenBoundsChange()
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+            preserveRatioWhenBoundsChange = true;
+            return this;
+        }
 
         public void Set(float value)
         {
@@ -75,138 +84,135 @@ namespace Klrpxy.Gameplay.Stats
             Set(value - amount);
         }
 
-        public Resource WithBounds(float minimum, float maximum)
-        {
-            threadGuard.Verify();
-            ThrowIfDisposed();
-            EnsureBoundsAreNotDeclared();
-            EnsureFinite(minimum);
-            EnsureFinite(maximum);
-
-            if (minimum > maximum)
-            {
-                throw new ArgumentOutOfRangeException(nameof(minimum), "The minimum cannot exceed the maximum.");
-            }
-
-            this.minimum = minimum;
-            this.maximum = maximum;
-            hasBounds = true;
-            hasMaximum = true;
-            StatsPropagationCoordinator.Execute(ApplyDeclaredBoundsCore);
-            return this;
-        }
-
         public Resource WithMinimum(float minimum)
         {
             threadGuard.Verify();
             ThrowIfDisposed();
-            EnsureBoundsAreNotDeclared();
             EnsureFinite(minimum);
+            float nextMaximum = ReadCurrentMaximum();
+            if (hasMaximum && minimum > nextMaximum)
+            {
+                throw new ArgumentOutOfRangeException(nameof(minimum), "The minimum cannot exceed the maximum.");
+            }
+
+            IDisposable previousSubscription = minimumSubscription;
+            IDisposable previousDependency = minimumDependency;
+            minimumInput = null;
             this.minimum = minimum;
-            hasBounds = true;
-            hasMaximum = false;
+            maximum = nextMaximum;
+            hasMinimum = true;
+            minimumSubscription = null;
+            minimumDependency = null;
             StatsPropagationCoordinator.Execute(ApplyDeclaredBoundsCore);
+            previousSubscription?.Dispose();
+            previousDependency?.Dispose();
             return this;
         }
 
-        public Resource WithBounds(float minimum, ValueInput<float> maximum, ResourceBoundPolicy policy = ResourceBoundPolicy.Clamp)
+        public Resource WithMaximum(float maximum)
         {
             threadGuard.Verify();
             ThrowIfDisposed();
-            EnsureBoundsAreNotDeclared();
-            if (maximum == null) throw new ArgumentNullException(nameof(maximum));
-            EnsureFinite(minimum);
-            float initialMaximum = maximum.Read();
-            EnsureFinite(initialMaximum);
-            if (minimum > initialMaximum) throw new ArgumentOutOfRangeException(nameof(minimum));
+            EnsureFinite(maximum);
+            float nextMinimum = ReadCurrentMinimum();
+            if (hasMinimum && nextMinimum > maximum)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maximum), "The maximum cannot be below the minimum.");
+            }
 
-            boundsDependency = StatsPropagationCoordinator.AddDependencies(
+            IDisposable previousSubscription = maximumSubscription;
+            IDisposable previousDependency = maximumDependency;
+            maximumInput = null;
+            minimum = nextMinimum;
+            this.maximum = maximum;
+            hasMaximum = true;
+            maximumSubscription = null;
+            maximumDependency = null;
+            StatsPropagationCoordinator.Execute(ApplyDeclaredBoundsCore);
+            previousSubscription?.Dispose();
+            previousDependency?.Dispose();
+            return this;
+        }
+
+        public Resource WithMaximum(ValueInput<float> maximum)
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+            if (maximum == null) throw new ArgumentNullException(nameof(maximum));
+            float nextMaximum = maximum.Read();
+            EnsureFinite(nextMaximum);
+            float nextMinimum = ReadCurrentMinimum();
+            if (hasMinimum && nextMinimum > nextMaximum)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maximum), "The maximum cannot be below the minimum.");
+            }
+
+            IDisposable nextDependency = StatsPropagationCoordinator.AddDependencies(
                 maximum.DependencyNode == null ? Array.Empty<object>() : new[] { maximum.DependencyNode },
                 this);
-
+            IDisposable nextSubscription = null;
             try
             {
-                StatsPropagationCoordinator.Execute(() =>
-                {
-                    this.minimum = minimum;
-                    this.maximum = initialMaximum;
-                    boundPolicy = policy;
-                    maximumInput = maximum;
-                    hasBounds = true;
-                    hasMaximum = true;
-                    ApplyDeclaredBoundsCore();
-                    maximumSubscription = maximum.Subscribe(UpdateMaximum);
-                });
-            }
-            catch
-            {
-                boundsDependency.Dispose();
-                boundsDependency = null;
-                throw;
-            }
-            return this;
-        }
-
-        public Resource WithBounds(ValueInput<float> minimum, ValueInput<float> maximum, ResourceBoundPolicy policy = ResourceBoundPolicy.Clamp)
-        {
-            threadGuard.Verify();
-            ThrowIfDisposed();
-            EnsureBoundsAreNotDeclared();
-            if (minimum == null) throw new ArgumentNullException(nameof(minimum));
-            if (maximum == null) throw new ArgumentNullException(nameof(maximum));
-            float initialMinimum = minimum.Read();
-            float initialMaximum = maximum.Read();
-            EnsureFinite(initialMinimum);
-            EnsureFinite(initialMaximum);
-            if (initialMinimum > initialMaximum) throw new ArgumentOutOfRangeException(nameof(minimum));
-            var nodes = new System.Collections.Generic.List<object>();
-            if (minimum.DependencyNode != null) nodes.Add(minimum.DependencyNode);
-            if (maximum.DependencyNode != null) nodes.Add(maximum.DependencyNode);
-            boundsDependency = StatsPropagationCoordinator.AddDependencies(nodes, this);
-            try
-            {
-                StatsPropagationCoordinator.Execute(() =>
-                {
-                    this.minimum = initialMinimum;
-                    this.maximum = initialMaximum;
-                    minimumInput = minimum;
-                    maximumInput = maximum;
-                    boundPolicy = policy;
-                    hasBounds = true;
-                    hasMaximum = true;
-                    ApplyDeclaredBoundsCore();
-                    minimumSubscription = minimum.Subscribe(UpdateDynamicBounds);
-                    maximumSubscription = maximum.Subscribe(UpdateDynamicBounds);
-                });
+                nextSubscription = maximum.Subscribe(UpdateDynamicEndpoints);
+                IDisposable previousSubscription = maximumSubscription;
+                IDisposable previousDependency = maximumDependency;
+                maximumInput = maximum;
+                minimum = nextMinimum;
+                this.maximum = nextMaximum;
+                hasMaximum = true;
+                maximumSubscription = nextSubscription;
+                maximumDependency = nextDependency;
+                StatsPropagationCoordinator.Execute(ApplyDeclaredBoundsCore);
+                previousSubscription?.Dispose();
+                previousDependency?.Dispose();
                 return this;
             }
             catch
             {
-                boundsDependency.Dispose();
-                boundsDependency = null;
+                nextSubscription?.Dispose();
+                nextDependency.Dispose();
                 throw;
             }
         }
 
-        private void UpdateDynamicBounds()
+        public Resource WithMinimum(ValueInput<float> minimum)
         {
-            float previousMinimum = minimum;
-            float previousMaximum = maximum;
-            float nextMinimum = minimumInput.Read();
-            float nextMaximum = maximumInput.Read();
+            threadGuard.Verify();
+            ThrowIfDisposed();
+            if (minimum == null) throw new ArgumentNullException(nameof(minimum));
+            float nextMinimum = minimum.Read();
             EnsureFinite(nextMinimum);
-            EnsureFinite(nextMaximum);
-            if (nextMinimum > nextMaximum) throw new InvalidOperationException("The dynamic minimum cannot exceed the maximum.");
-            minimum = nextMinimum;
-            maximum = nextMaximum;
-            if (boundPolicy == ResourceBoundPolicy.PreserveRatio && previousMaximum != previousMinimum)
+            float nextMaximum = ReadCurrentMaximum();
+            if (hasMaximum && nextMinimum > nextMaximum)
             {
-                float ratio = (value - previousMinimum) / (previousMaximum - previousMinimum);
-                Set(nextMinimum + ((nextMaximum - nextMinimum) * ratio));
+                throw new ArgumentOutOfRangeException(nameof(minimum), "The minimum cannot exceed the maximum.");
             }
-            else
+
+            IDisposable nextDependency = StatsPropagationCoordinator.AddDependencies(
+                minimum.DependencyNode == null ? Array.Empty<object>() : new[] { minimum.DependencyNode },
+                this);
+            IDisposable nextSubscription = null;
+            try
             {
-                Set(value);
+                nextSubscription = minimum.Subscribe(UpdateDynamicEndpoints);
+                IDisposable previousSubscription = minimumSubscription;
+                IDisposable previousDependency = minimumDependency;
+                minimumInput = minimum;
+                this.minimum = nextMinimum;
+                maximum = nextMaximum;
+                hasMinimum = true;
+                minimumSubscription = nextSubscription;
+                minimumDependency = nextDependency;
+                StatsPropagationCoordinator.Execute(ApplyDeclaredBoundsCore);
+                previousSubscription?.Dispose();
+                previousDependency?.Dispose();
+                return this;
+            }
+            catch
+            {
+                nextSubscription?.Dispose();
+                nextDependency.Dispose();
+                throw;
             }
         }
 
@@ -221,23 +227,44 @@ namespace Klrpxy.Gameplay.Stats
             StatsPropagationCoordinator.RecordChange(this, () => OnValueChanged, previous, bounded);
         }
 
-        private void UpdateMaximum()
+        private void UpdateDynamicEndpoints()
         {
+            float previousMinimum = minimum;
             float previousMaximum = maximum;
-            float nextMaximum = maximumInput.Read();
-            EnsureFinite(nextMaximum);
-            if (minimum > nextMaximum) throw new InvalidOperationException("The dynamic maximum cannot be below the minimum.");
-            if (nextMaximum == previousMaximum) return;
-
-            maximum = nextMaximum;
-            if (boundPolicy == ResourceBoundPolicy.PreserveRatio && previousMaximum != minimum)
+            float nextMinimum = ReadCurrentMinimum();
+            float nextMaximum = ReadCurrentMaximum();
+            if (hasMinimum && hasMaximum && nextMinimum > nextMaximum)
             {
-                float ratio = (value - minimum) / (previousMaximum - minimum);
-                Set(minimum + ((nextMaximum - minimum) * ratio));
+                throw new InvalidOperationException("The dynamic minimum cannot exceed the maximum.");
+            }
+
+            minimum = nextMinimum;
+            maximum = nextMaximum;
+            if (preserveRatioWhenBoundsChange
+                && hasMinimum
+                && hasMaximum
+                && previousMaximum != previousMinimum)
+            {
+                float ratio = (value - previousMinimum) / (previousMaximum - previousMinimum);
+                Set(nextMinimum + ((nextMaximum - nextMinimum) * ratio));
                 return;
             }
 
             Set(value);
+        }
+
+        private float ReadCurrentMinimum()
+        {
+            float current = minimumInput == null ? minimum : minimumInput.Read();
+            EnsureFinite(current);
+            return current;
+        }
+
+        private float ReadCurrentMaximum()
+        {
+            float current = maximumInput == null ? maximum : maximumInput.Read();
+            EnsureFinite(current);
+            return current;
         }
 
         private static void EnsureFinite(float value)
@@ -265,21 +292,16 @@ namespace Klrpxy.Gameplay.Stats
 
         private float ApplyBounds(float value)
         {
-            if (!hasBounds)
+            if (!hasMinimum && !hasMaximum)
             {
                 return value;
             }
 
-            value = Math.Max(value, minimum);
-            return hasMaximum ? Math.Min(value, maximum) : value;
-        }
-
-        private void EnsureBoundsAreNotDeclared()
-        {
-            if (hasBounds)
+            if (hasMinimum)
             {
-                throw new InvalidOperationException("The Resource bounds have already been declared.");
+                value = Math.Max(value, minimum);
             }
+            return hasMaximum ? Math.Min(value, maximum) : value;
         }
 
         internal void VerifyThread()
@@ -295,11 +317,13 @@ namespace Klrpxy.Gameplay.Stats
             disposed = true;
             minimumSubscription?.Dispose();
             maximumSubscription?.Dispose();
-            boundsDependency?.Dispose();
+            maximumDependency?.Dispose();
+            minimumDependency?.Dispose();
             StatsPropagationCoordinator.RemoveNode(this);
             minimumSubscription = null;
             maximumSubscription = null;
-            boundsDependency = null;
+            maximumDependency = null;
+            minimumDependency = null;
             ValueChanged = null;
             OnValueChanged = null;
         }

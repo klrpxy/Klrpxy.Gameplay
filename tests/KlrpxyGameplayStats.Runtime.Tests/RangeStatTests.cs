@@ -17,6 +17,22 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         }
 
         [Fact]
+        public void FixedMinimumLimitsRangeWithoutAMaximum()
+        {
+            var stat = new RangeStat(10f, 20f).WithMinimum(15f);
+
+            Assert.Equal((15f, 20f), (stat.FinalRange.Min, stat.FinalRange.Max));
+        }
+
+        [Fact]
+        public void FixedMaximumLimitsRangeWithoutAMinimum()
+        {
+            var stat = new RangeStat(10f, 20f).WithMaximum(15f);
+
+            Assert.Equal((10f, 15f), (stat.FinalRange.Min, stat.FinalRange.Max));
+        }
+
+        [Fact]
         public void RangeOverrideReplacesArithmeticResultAndSortsEndpoints()
         {
             // 验证 RangeStat 的完整范围 Override 会覆盖算术结果并保持 Min 不大于 Max。
@@ -67,11 +83,67 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var minimum = new ObservableValue(0f);
             var maximum = new Stat(20f);
             var range = new RangeStat(10f, 30f)
-                .WithBounds(ValueInput.External(minimum), ValueInput.Final(maximum));
+                .WithMinimum(ValueInput.External(minimum))
+                .WithMaximum(ValueInput.Final(maximum));
 
             maximum.BaseValue = 15f;
 
             Assert.Equal((10f, 15f), (range.FinalRange.Min, range.FinalRange.Max));
+        }
+
+        [Fact]
+        public void DynamicMinimumTracksItsInputWithoutAMaximum()
+        {
+            var minimum = new ObservableValue(0f);
+            var range = new RangeStat(10f, 30f)
+                .WithMinimum(ValueInput.External(minimum));
+
+            minimum.Value = 20f;
+
+            Assert.Equal((20f, 30f), (range.FinalRange.Min, range.FinalRange.Max));
+        }
+
+        [Fact]
+        public void DynamicMaximumTracksItsInputWithoutAMinimum()
+        {
+            var maximum = new Stat(30f);
+            var range = new RangeStat(10f, 40f)
+                .WithMaximum(ValueInput.Final(maximum));
+
+            maximum.BaseValue = 20f;
+
+            Assert.Equal((10f, 20f), (range.FinalRange.Min, range.FinalRange.Max));
+        }
+
+        [Fact]
+        public void InvalidDynamicEndpointsKeepTheLastValidRangeAndRecoverTogether()
+        {
+            var minimum = new ObservableValue(0f);
+            var maximum = new ObservableValue(100f);
+            var range = new RangeStat(-10f, 200f)
+                .WithMinimum(ValueInput.External(minimum))
+                .WithMaximum(ValueInput.External(maximum));
+
+            Assert.Throws<System.InvalidOperationException>(() => minimum.Value = 120f);
+            Assert.Equal((0f, 100f), (range.FinalRange.Min, range.FinalRange.Max));
+
+            maximum.Value = 150f;
+            Assert.Equal((120f, 150f), (range.FinalRange.Min, range.FinalRange.Max));
+        }
+
+        [Fact]
+        public void ReplacingTheOtherEndpointRecoversAValidDynamicBound()
+        {
+            var minimum = new ObservableValue(0f);
+            var range = new RangeStat(-20f, -10f)
+                .WithMinimum(ValueInput.External(minimum))
+                .WithMaximum(100f);
+
+            Assert.Throws<System.InvalidOperationException>(() => minimum.Value = 120f);
+
+            range.WithMaximum(150f);
+
+            Assert.Equal((120f, 120f), (range.FinalRange.Min, range.FinalRange.Max));
         }
 
         [Fact]
@@ -127,7 +199,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             "Tests::RoundedRangeTestStatSet.Value",
             statSet => ((RoundedRangeTestStatSet)statSet).Value);
 
-        public RangeStat Value { get; } = new RangeStat(10f, 15f, RoundingMode.Floor).WithBounds(12f, 18f);
+        public RangeStat Value { get; } = new RangeStat(10f, 15f, RoundingMode.Floor)
+            .WithMinimum(12f)
+            .WithMaximum(18f);
 
         protected override void AppendGeneratedMembers(System.Collections.Generic.ICollection<StatMemberDescriptor> members)
         {
