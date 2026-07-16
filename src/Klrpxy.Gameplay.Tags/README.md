@@ -6,7 +6,7 @@ Klrpxy Gameplay Tags turns a class-local Tag Table into type-safe, hierarchical 
 
 ## Quick start
 
-1. Download `Klrpxy.Gameplay.Tags.0.2.0.unitypackage` from the v0.2.0 release.
+1. Download `Klrpxy.Gameplay.Tags.0.2.1.unitypackage` from the v0.2.1 release.
 2. In Unity, choose **Assets > Import Package > Custom Package** and import the downloaded file.
 3. Add one script in the same Unity assembly as the scripts that will use the tags. If the project does not use Assembly Definition Files (`.asmdef`), all scripts already meet this requirement. Declare the project's single **Tag Table** in that marked root:
 
@@ -37,9 +37,11 @@ If `Tags.Unit.Enemy.Boss` compiles or appears in code completion, setup succeede
 
 1. Delete `GameplayTags.KlrpxyGameplayTags.additionalfile` from `Assets`.
 2. Copy its contents into the marked root's single `private const string TagTable` field, as shown above.
-3. Import the v0.2.0 package. It installs both the analyzer DLL and the runtime DLL.
+3. Import the v0.2.1 package. It installs both the analyzer DLL and the runtime DLL.
 
 Do not keep the external file and the class-local field together. v0.2.0 reports `KTAG007` when it finds the old external file.
+
+Projects that also use Stats require Tags v0.2.1 or later. The v0.2.0 release package does not contain the runtime integration interfaces required by Stats.
 
 ## Why use a Tag Table?
 

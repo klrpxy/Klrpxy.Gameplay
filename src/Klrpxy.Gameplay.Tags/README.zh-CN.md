@@ -6,7 +6,7 @@ Klrpxy Gameplay Tags 会把类内 Tag Table 生成 Unity 项目中类型安全�
 
 ## 快速开始
 
-1. 从 v0.2.0 Release 下载 `Klrpxy.Gameplay.Tags.0.2.0.unitypackage`。
+1. 从 v0.2.1 Release 下载 `Klrpxy.Gameplay.Tags.0.2.1.unitypackage`。
 2. 在 Unity 中选择 **Assets > Import Package > Custom Package**，导入下载的文件。
 3. 在将要使用这些 Tag 的脚本所在的同一个 Unity 程序集中，新建一个脚本。如果项目没有使用程序集定义文件（`.asmdef`），所有脚本默认都满足这项要求。在带标记的根类中声明项目唯一的 **Tag Table**：
 
@@ -37,9 +37,11 @@ Klrpxy Gameplay Tags 会把类内 Tag Table 生成 Unity 项目中类型安全�
 
 1. 删除 `Assets` 中的 `GameplayTags.KlrpxyGameplayTags.additionalfile`。
 2. 将其中内容复制到带标记根类唯一的 `private const string TagTable` 字段，格式见上文。
-3. 导入 v0.2.0 安装包；该包同时安装分析器 DLL 与 runtime DLL。
+3. 导入 v0.2.1 安装包；该包同时安装分析器 DLL 与 runtime DLL。
 
 不要让旧外部文件与类内字段同时存在。v0.2.0 检测到旧文件时会报告 `KTAG007`。
+
+如果项目同时使用 Stats，请至少安装 Tags v0.2.1。v0.2.0 的发布包缺少 Stats 所需的运行时集成接口。
 
 ## 为什么使用 Tag Table？
 

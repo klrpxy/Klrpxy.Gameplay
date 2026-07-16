@@ -6,12 +6,12 @@ Klrpxy Gameplay Stats expresses character attributes, item auras, combat growth,
 
 ## Installation
 
-Stats v0.3.1 is verified with Unity 2022.3.62f3 and Unity 6000.5.0f1.
+Stats v0.3.2 is verified with Unity 2022.3.62f3 and Unity 6000.5.0f1.
 
-v0.3.1 fixes a v0.3.0 false-positive `KGS003` diagnostic in independent assemblies, including Unity Test Framework assemblies, that do not reference Stats Runtime. v0.3.0 users should upgrade. Stats R3 v0.3.0 remains compatible with Core v0.3.1.
+Tags v0.2.1 adds the runtime integration contract required by Stats. Stats v0.3.2 validates that contract instead of accepting the incompatible Tags v0.2.0 package. Stats R3 v0.3.0 remains compatible with Core v0.3.2.
 
-1. Download and import [Klrpxy Gameplay Tags v0.2.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.2.0/Klrpxy.Gameplay.Tags.0.2.0.unitypackage).
-2. Download and import [Klrpxy Gameplay Stats v0.3.1](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.3.1/Klrpxy.Gameplay.Stats.0.3.1.unitypackage).
+1. Download and import [Klrpxy Gameplay Tags v0.2.1](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.2.1/Klrpxy.Gameplay.Tags.0.2.1.unitypackage).
+2. Download and import [Klrpxy Gameplay Stats v0.3.2](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.3.2/Klrpxy.Gameplay.Stats.0.3.2.unitypackage).
 
 The Stats package does not copy the Tags DLL. Install Tags before Stats.
 

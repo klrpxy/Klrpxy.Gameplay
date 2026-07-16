@@ -8,7 +8,9 @@ param(
 
     [string]$StatsPackagePath,
 
-    [string]$TagsPackagePath = 'artifacts/Klrpxy.Gameplay.Tags.0.2.0.unitypackage',
+    [string]$TagsPackagePath = 'artifacts/Klrpxy.Gameplay.Tags.0.2.1.unitypackage',
+
+    [string]$LegacyTagsPackagePath = 'artifacts/Klrpxy.Gameplay.Tags.0.2.0.unitypackage',
 
     [switch]$KeepHost
 )
@@ -53,7 +55,7 @@ if (-not (Test-Path -LiteralPath $UnityPath -PathType Leaf))
     throw "UNITY_ENVIRONMENT_FAILURE Unity executable was not found: $UnityPath"
 }
 
-foreach ($packagePath in @($TagsPackagePath, $StatsPackagePath))
+foreach ($packagePath in @($TagsPackagePath, $LegacyTagsPackagePath, $StatsPackagePath))
 {
     if (-not (Test-Path -LiteralPath $packagePath -PathType Leaf))
     {
@@ -69,7 +71,7 @@ function Write-HostProject([string]$Path)
 {
     New-Item -ItemType Directory -Path (Join-Path $Path 'Assets') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $Path 'ProjectSettings') -Force | Out-Null
-    Copy-Item -LiteralPath $TagsPackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage')
+    Copy-Item -LiteralPath $TagsPackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Tags.0.2.1.unitypackage')
     Copy-Item -LiteralPath $StatsPackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Stats.unitypackage')
 
     @"
@@ -82,6 +84,19 @@ function Write-NegativeHostProject([string]$Path)
 {
     New-Item -ItemType Directory -Path (Join-Path $Path 'Assets') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $Path 'ProjectSettings') -Force | Out-Null
+    Copy-Item -LiteralPath $StatsPackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Stats.unitypackage')
+
+    @"
+m_EditorVersion: $UnityVersion
+m_EditorVersionWithRevision: $UnityVersion
+"@ | Set-Content -LiteralPath (Join-Path $Path 'ProjectSettings\ProjectVersion.txt') -Encoding utf8
+}
+
+function Write-LegacyTagsHostProject([string]$Path)
+{
+    New-Item -ItemType Directory -Path (Join-Path $Path 'Assets') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $Path 'ProjectSettings') -Force | Out-Null
+    Copy-Item -LiteralPath $LegacyTagsPackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage')
     Copy-Item -LiteralPath $StatsPackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Stats.unitypackage')
 
     @"
@@ -121,7 +136,7 @@ try
     Write-HostProject $validHost
     $tagsImportLog = Join-Path $validHost 'TagsImport.log'
     $statsImportLog = Join-Path $validHost 'StatsImport.log'
-    Import-UnityPackage $validHost 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage' $tagsImportLog
+    Import-UnityPackage $validHost 'Klrpxy.Gameplay.Tags.0.2.1.unitypackage' $tagsImportLog
     Import-UnityPackage $validHost 'Klrpxy.Gameplay.Stats.unitypackage' $statsImportLog
 
     Copy-Item `
@@ -244,7 +259,7 @@ namespace Consumer
         throw "UNITY_FUNCTIONAL_FAILURE The Stats Runtime was not referenced in the missing-Tags project. log=$negativeEditorLog"
     }
 
-    if ($negativeOutput -notmatch 'KGS003' -or $negativeOutput -notmatch 'Gameplay Tags v0\.2\.0')
+    if ($negativeOutput -notmatch 'KGS003' -or $negativeOutput -notmatch 'Gameplay Tags v0\.2\.1')
     {
         throw "UNITY_FUNCTIONAL_FAILURE The missing-Tags project did not report KGS003 with installation guidance. log=$negativeEditorLog"
     }
@@ -252,6 +267,39 @@ namespace Consumer
     if ($negativeOutput -match '(?i)(AD0001|analyzer.+(exception|crash))')
     {
         throw "UNITY_FUNCTIONAL_FAILURE The Stats analyzer failed in the missing-Tags project. log=$negativeEditorLog"
+    }
+
+    $legacyHost = Join-Path $hostRoot 'tags-v0.2.0'
+    Write-LegacyTagsHostProject $legacyHost
+    $legacyTagsImportLog = Join-Path $legacyHost 'TagsImport.log'
+    $legacyStatsImportLog = Join-Path $legacyHost 'StatsImport.log'
+    Import-UnityPackage $legacyHost 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage' $legacyTagsImportLog
+    Import-UnityPackage $legacyHost 'Klrpxy.Gameplay.Stats.unitypackage' $legacyStatsImportLog -AllowCompilationErrors
+    @'
+using Klrpxy.Gameplay.Stats;
+
+namespace Consumer
+{
+    public sealed partial class LegacyTagsStatSet : StatSet
+    {
+        public Stat Health { get; } = new Stat(100f);
+    }
+}
+'@ | Set-Content -LiteralPath (Join-Path $legacyHost 'Assets\Consumer.cs') -Encoding utf8
+
+    $legacyEditorLog = Join-Path $legacyHost 'Editor.log'
+    $legacyEditorOutput = Invoke-UnityHost $legacyHost $legacyEditorLog -AllowCompilationErrors
+    $legacyOutput = (Get-Content -Raw -LiteralPath $legacyTagsImportLog),
+        (Get-Content -Raw -LiteralPath $legacyStatsImportLog),
+        $legacyEditorOutput -join [Environment]::NewLine
+    if ($legacyOutput -notmatch 'KGS003' -or $legacyOutput -notmatch 'Gameplay Tags v0\.2\.1')
+    {
+        throw "UNITY_FUNCTIONAL_FAILURE The Tags v0.2.0 project did not report KGS003 with upgrade guidance. log=$legacyEditorLog"
+    }
+
+    if ($legacyOutput -match '(?i)(AD0001|analyzer.+(exception|crash))')
+    {
+        throw "UNITY_FUNCTIONAL_FAILURE The Stats analyzer failed with Tags v0.2.0. log=$legacyEditorLog"
     }
 
     Write-Output "KLRPXY_STATS_UNITY_SMOKE_PASS unity=$UnityVersion temp=$hostRoot"

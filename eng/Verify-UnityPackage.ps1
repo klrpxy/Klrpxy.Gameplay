@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$PackagePath = 'artifacts/Klrpxy.Gameplay.Tags.0.2.0.unitypackage'
+    [string]$PackagePath = 'artifacts/Klrpxy.Gameplay.Tags.0.2.1.unitypackage'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,6 +34,7 @@ try
         [PSCustomObject]@{
             Path = (Get-Content -Raw -LiteralPath $_.FullName).Trim()
             Meta = Get-Content -Raw -LiteralPath (Join-Path $_.DirectoryName 'asset.meta')
+            Asset = Join-Path $_.DirectoryName 'asset'
         }
     })
     $analyzer = @($packageAssets | Where-Object { $_.Path -eq 'Assets/KlrpxyGameplayTags/KlrpxyGameplayTags.dll' })
@@ -51,6 +52,21 @@ try
     if (($runtime[0].Meta -match 'RoslynAnalyzer') -or ($runtime[0].Meta -notmatch '(?s)Any:\s*second:\s*enabled: 1'))
     {
         throw 'The runtime DLL must not be a RoslynAnalyzer and must have runtime platforms enabled.'
+    }
+
+    $runtimeAssembly = [Reflection.Assembly]::Load([IO.File]::ReadAllBytes($runtime[0].Asset))
+    $requiredTypes = @(
+        'Klrpxy.Gameplay.Tags.Runtime.IGameplayTag',
+        'Klrpxy.Gameplay.Tags.Runtime.IHierarchicalGameplayTag',
+        'Klrpxy.Gameplay.Tags.Runtime.ITagSet',
+        'Klrpxy.Gameplay.Tags.Runtime.ITagQuery',
+        'Klrpxy.Gameplay.Tags.Runtime.TagSetChange'
+    )
+    $exportedTypes = @($runtimeAssembly.GetExportedTypes() | ForEach-Object FullName)
+    $missingTypes = @($requiredTypes | Where-Object { $_ -notin $exportedTypes })
+    if ($runtimeAssembly.GetName().Version -ne [Version]'0.2.1.0' -or $missingTypes.Count -ne 0)
+    {
+        throw "The runtime DLL must be v0.2.1 and expose the Stats integration contract. Missing: $($missingTypes -join ', ')"
     }
 }
 finally

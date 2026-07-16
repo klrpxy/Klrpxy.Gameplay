@@ -40,7 +40,7 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $projectPath = Join-Path $repositoryRoot 'src\Klrpxy.Gameplay.Tags\KlrpxyGameplayTags.csproj'
 if (-not $OutputPath)
 {
-    $OutputPath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Tags.0.2.0.unitypackage'
+    $OutputPath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Tags.0.2.1.unitypackage'
 }
 
 if (-not (Test-Path -LiteralPath $UnityPath -PathType Leaf))
@@ -89,7 +89,7 @@ m_EditorVersion: 2022.3.62f3
 m_EditorVersionWithRevision: 2022.3.62f3
 '@ | Set-Content -LiteralPath (Join-Path $stagingRoot 'ProjectSettings\ProjectVersion.txt') -Encoding utf8
 
-    $stagedPackage = Join-Path $stagingRoot 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage'
+    $stagedPackage = Join-Path $stagingRoot 'Klrpxy.Gameplay.Tags.0.2.1.unitypackage'
     $env:KLRPXY_UNITY_PACKAGE_OUTPUT = $stagedPackage
     $process = Start-Process -FilePath $UnityPath -WorkingDirectory $stagingRoot -PassThru -NoNewWindow -ArgumentList @(
         '-batchmode', '-nographics', '-quit', '-projectPath', '.', '-executeMethod',

@@ -15,12 +15,40 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 if (-not $PackagePath)
 {
-    $PackagePath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Tags.0.2.0.unitypackage'
+    $PackagePath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Tags.0.2.1.unitypackage'
 }
 
 if (-not (Test-Path -LiteralPath $UnityPath -PathType Leaf))
 {
     throw "Unity executable was not found: $UnityPath"
+}
+
+function Wait-UnityProcess([System.Diagnostics.Process]$Process, [string]$LogPath)
+{
+    if (-not $Process.WaitForExit(300000))
+    {
+        $Process.Kill()
+        $Process.WaitForExit()
+        throw "Unity did not exit within five minutes. See $LogPath"
+    }
+}
+
+function Remove-TemporaryDirectory([string]$Path)
+{
+    for ($attempt = 0; $attempt -lt 20; $attempt++)
+    {
+        try
+        {
+            [System.IO.Directory]::Delete($Path, $true)
+            return
+        }
+        catch [System.IO.IOException]
+        {
+            Start-Sleep -Milliseconds 250
+        }
+    }
+
+    [System.IO.Directory]::Delete($Path, $true)
 }
 
 & (Join-Path $PSScriptRoot 'Verify-UnityPackage.ps1') -PackagePath $PackagePath
@@ -32,7 +60,7 @@ function Write-HostProject([string]$Path)
     New-Item -ItemType Directory -Path (Join-Path $Path 'Assets') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $Path 'ProjectSettings') -Force | Out-Null
 
-    Copy-Item -LiteralPath $PackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Tags.0.2.0.unitypackage')
+    Copy-Item -LiteralPath $PackagePath -Destination (Join-Path $Path 'Klrpxy.Gameplay.Tags.0.2.1.unitypackage')
 
     @"
 m_EditorVersion: $UnityVersion
@@ -48,7 +76,7 @@ function Write-Consumer([string]$Path, [string]$Source)
 
 function Invoke-UnityHost([string]$Path, [string]$LogPath, [switch]$AllowCompilationErrors)
 {
-    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $Path -Wait -PassThru -ArgumentList @(
+    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $Path -PassThru -ArgumentList @(
         '-batchmode',
         '-nographics',
         '-quit',
@@ -56,6 +84,7 @@ function Invoke-UnityHost([string]$Path, [string]$LogPath, [switch]$AllowCompila
         '.',
         '-logFile',
         'Editor.log')
+    Wait-UnityProcess $process $LogPath
     if ($process.ExitCode -ne 0 -and -not $AllowCompilationErrors)
     {
         throw "Unity exited with code $($process.ExitCode). See $LogPath"
@@ -66,9 +95,10 @@ function Invoke-UnityHost([string]$Path, [string]$LogPath, [switch]$AllowCompila
 
 function Import-UnityPackage([string]$Path, [string]$LogPath)
 {
-    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $Path -Wait -PassThru -ArgumentList @(
+    $process = Start-Process -FilePath $UnityPath -WorkingDirectory $Path -PassThru -ArgumentList @(
         '-batchmode', '-nographics', '-quit', '-projectPath', '.', '-importPackage',
-        'Klrpxy.Gameplay.Tags.0.2.0.unitypackage', '-logFile', 'Import.log')
+        'Klrpxy.Gameplay.Tags.0.2.1.unitypackage', '-logFile', 'Import.log')
+    Wait-UnityProcess $process $LogPath
     if ($process.ExitCode -ne 0)
     {
         throw "Unity failed to import the package. See $LogPath"
@@ -150,6 +180,6 @@ finally
 {
     if ((-not $KeepHost) -and (Test-Path -LiteralPath $hostRoot))
     {
-        Remove-Item -LiteralPath $hostRoot -Recurse -Force
+        Remove-TemporaryDirectory $hostRoot
     }
 }

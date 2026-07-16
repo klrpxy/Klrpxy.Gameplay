@@ -228,6 +228,40 @@ namespace Consumer
                 includeTagsRuntime: false,
                 tagsRuntimeReference: CreateTagsRuntimeReference("0.1.0.0"));
 
+            Diagnostic diagnostic = Assert.Single(result.Diagnostics);
+            Assert.Equal("KGS003", diagnostic.Id);
+            Assert.Contains("Gameplay Tags v0.2.1", diagnostic.GetMessage());
+        }
+
+        [Fact]
+        public void TagsRuntimeWithoutStatsIntegrationReportsInstallationDiagnostic()
+        {
+            // 验证程序集名称和版本看似兼容、但缺少 Stats 集成类型时仍会得到安装诊断。
+            GeneratorDriverRunResult result = RunGeneratorWithResult(
+                "public static class ConsumerContract { }",
+                includeTagsRuntime: false,
+                tagsRuntimeReference: CreateTagsRuntimeReference("1.0.0.0"));
+
+            Assert.Equal("KGS003", Assert.Single(result.Diagnostics).Id);
+        }
+
+        [Fact]
+        public void TagsRuntimeBeforeMinimumPackageVersionReportsInstallationDiagnostic()
+        {
+            // 验证即使集成类型齐全，低于最低发布版本的 Tags Runtime 仍会得到安装诊断。
+            GeneratorDriverRunResult result = RunGeneratorWithResult(
+                "public static class ConsumerContract { }",
+                includeTagsRuntime: false,
+                tagsRuntimeReference: CreateTagsRuntimeReference("0.2.0.0", @"
+namespace Klrpxy.Gameplay.Tags.Runtime
+{
+    public interface IGameplayTag { }
+    public interface IHierarchicalGameplayTag : IGameplayTag { }
+    public interface ITagSet { }
+    public interface ITagQuery { }
+    public sealed class TagSetChange { }
+}"));
+
             Assert.Equal("KGS003", Assert.Single(result.Diagnostics).Id);
         }
 
@@ -1016,11 +1050,11 @@ namespace Consumer
         }
 
         // 创建仅用于消费者编译的指定版本 Tags Runtime 元数据引用。
-        private static MetadataReference CreateTagsRuntimeReference(string version)
+        private static MetadataReference CreateTagsRuntimeReference(string version, string source = null)
         {
             CSharpCompilation compilation = CSharpCompilation.Create(
                 "KlrpxyGameplayTags.Runtime",
-                new[] { CSharpSyntaxTree.ParseText("using System.Reflection; [assembly: AssemblyVersion(\"" + version + "\")]", new CSharpParseOptions(LanguageVersion.CSharp8)) },
+                new[] { CSharpSyntaxTree.ParseText("using System.Reflection; [assembly: AssemblyVersion(\"" + version + "\")]\n" + source, new CSharpParseOptions(LanguageVersion.CSharp8)) },
                 GetReferences(includeTagsRuntime: false),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
             using (var stream = new MemoryStream())
