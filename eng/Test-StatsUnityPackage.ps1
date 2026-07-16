@@ -16,7 +16,22 @@ param(
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $tagsPackagePath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Tags.0.2.1.unitypackage'
+$legacyTagsPackagePath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Tags.0.2.0.unitypackage'
 $statsPackagePath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Stats.unitypackage'
+
+if (-not (Test-Path -LiteralPath $legacyTagsPackagePath -PathType Leaf))
+{
+    New-Item -ItemType Directory -Path (Split-Path -Parent $legacyTagsPackagePath) -Force | Out-Null
+    Invoke-WebRequest `
+        -Uri 'https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.2.0/Klrpxy.Gameplay.Tags.0.2.0.unitypackage' `
+        -OutFile $legacyTagsPackagePath
+}
+
+$legacyTagsPackageHash = (Get-FileHash -LiteralPath $legacyTagsPackagePath -Algorithm SHA256).Hash
+if ($legacyTagsPackageHash -ne '99775E4CE65DA4B1F80A27A22C76064FE2AC224EECD53E251DBDBE78B2374D37')
+{
+    throw "UNITY_ENVIRONMENT_FAILURE Published Tags v0.2.0 package hash did not match. path=$legacyTagsPackagePath"
+}
 
 foreach ($unityPath in @($Unity2022Path, $Unity6Path))
 {
@@ -38,7 +53,8 @@ foreach ($editor in @(
         -UnityPath $editor.Path `
         -UnityVersion $editor.Version `
         -StatsPackagePath $statsPackagePath `
-        -TagsPackagePath $tagsPackagePath
+        -TagsPackagePath $tagsPackagePath `
+        -LegacyTagsPackagePath $legacyTagsPackagePath
 }
 
 $reportPath = Join-Path $repositoryRoot 'artifacts\Klrpxy.Gameplay.Stats.validation.json'

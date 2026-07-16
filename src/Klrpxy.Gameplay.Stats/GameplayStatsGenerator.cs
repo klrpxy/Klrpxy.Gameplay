@@ -117,7 +117,7 @@ namespace Klrpxy.Gameplay.Stats.Generator
         {
             if (!compilation.ReferencedAssemblyNames.Any(reference =>
                 string.Equals(reference.Name, TagsRuntimeAssemblyName, StringComparison.Ordinal)
-                && reference.Version >= new Version(0, 2, 0, 0)))
+                && reference.Version >= new Version(0, 2, 1, 0)))
             {
                 return false;
             }
