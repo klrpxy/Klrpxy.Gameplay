@@ -4,6 +4,24 @@
 
 Klrpxy Gameplay Stats expresses character attributes, item auras, combat growth, and resources with a small set of gameplay concepts. Dependency propagation, Group membership, Tag conditions, and lifetime cleanup are automatic after rules are declared.
 
+## Installation
+
+Stats v0.3.0 is verified with Unity 2022.3.62f3 and Unity 6000.5.0f1.
+
+1. Download and import [Klrpxy Gameplay Tags v0.2.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.2.0/Klrpxy.Gameplay.Tags.0.2.0.unitypackage).
+2. Download and import [Klrpxy Gameplay Stats v0.3.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.3.0/Klrpxy.Gameplay.Stats.0.3.0.unitypackage).
+
+The Stats package does not copy the Tags DLL. Install Tags before Stats.
+
+### Optional R3 Adapter
+
+Core Stats does not require R3. Follow these steps only when gameplay needs reactive values, conditions, or observation APIs:
+
+1. Install R3 1.3.1 by following the [official R3 Unity instructions](https://github.com/Cysharp/R3#unity).
+2. Import [Klrpxy Gameplay Stats R3 v0.3.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.3.0/Klrpxy.Gameplay.Stats.R3.0.3.0.unitypackage).
+
+The adapter does not bundle R3 DLLs and does not make Core Stats depend on R3.
+
 ## Quick start
 
 ### 1. Declare a StatSet and use generated keys

@@ -4,6 +4,24 @@
 
 Klrpxy Gameplay Stats 用少量领域概念表达角色属性、物品光环、战斗成长和资源变化。声明规则后，依赖传播、Group 成员变化、Tag 条件和生命周期清理由系统完成。
 
+## 安装
+
+Stats v0.3.0 已在 Unity 2022.3.62f3 和 Unity 6000.5.0f1 中完成验证。
+
+1. 下载并导入 [Klrpxy Gameplay Tags v0.2.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.2.0/Klrpxy.Gameplay.Tags.0.2.0.unitypackage)。
+2. 下载并导入 [Klrpxy Gameplay Stats v0.3.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.3.0/Klrpxy.Gameplay.Stats.0.3.0.unitypackage)。
+
+Stats 安装包不会复制 Tags DLL。请先安装 Tags，再安装 Stats。
+
+### 可选 R3 Adapter
+
+Core Stats 无需 R3。只有需要响应式动态值、条件或观察 API 时才执行以下步骤：
+
+1. 按 [R3 官方 Unity 安装说明](https://github.com/Cysharp/R3#unity)安装 R3 1.3.1。
+2. 导入 [Klrpxy Gameplay Stats R3 v0.3.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.3.0/Klrpxy.Gameplay.Stats.R3.0.3.0.unitypackage)。
+
+R3 Adapter 不捆绑 R3 DLL，也不会让 Core Stats 依赖 R3。
+
 ## 快速开始
 
 ### 1. 声明 StatSet，使用生成的 Key
