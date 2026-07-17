@@ -10,14 +10,16 @@ namespace Klrpxy.Gameplay.Stats
         private float baseValue;
         private readonly List<ModifierRegistration> modifiers = new List<ModifierRegistration>();
         private readonly RoundingMode rounding;
-        private FloatRange? bounds;
+        private float? minimumBound;
+        private float? maximumBound;
         private float finalValue;
         private readonly GameplayThreadGuard threadGuard = new GameplayThreadGuard();
         private ValueInput<float> minimumInput;
         private ValueInput<float> maximumInput;
         private IDisposable minimumSubscription;
         private IDisposable maximumSubscription;
-        private IDisposable boundsDependency;
+        private IDisposable minimumDependency;
+        private IDisposable maximumDependency;
         private bool disposed;
 
         public Stat(float baseValue, RoundingMode rounding = RoundingMode.None)
@@ -64,77 +66,168 @@ namespace Klrpxy.Gameplay.Stats
 
         internal event Action FinalValueChanged;
 
-        public Stat WithBounds(float minimum, float maximum)
+        public Stat WithMinimum(float minimum)
         {
             threadGuard.Verify();
             ThrowIfDisposed();
             Modifier.ValidateFinite(minimum, nameof(minimum));
-            Modifier.ValidateFinite(maximum, nameof(maximum));
-            if (minimum > maximum)
+            float rounded = rounding == RoundingMode.None ? minimum : (float)Math.Ceiling(minimum);
+            float? nextMaximum = ReadCurrentMaximum();
+            if (nextMaximum.HasValue && rounded > nextMaximum.Value)
             {
                 throw new ArgumentOutOfRangeException(nameof(minimum));
             }
 
-            bounds = new FloatRange(
-                rounding == RoundingMode.None ? minimum : (float)Math.Ceiling(minimum),
-                rounding == RoundingMode.None ? maximum : (float)Math.Floor(maximum));
-            if (bounds.Value.Min > bounds.Value.Max)
-            {
-                throw new ArgumentOutOfRangeException(nameof(minimum));
-            }
-
+            IDisposable previousSubscription = minimumSubscription;
+            IDisposable previousDependency = minimumDependency;
+            minimumInput = null;
+            minimumBound = rounded;
+            maximumBound = nextMaximum;
+            minimumSubscription = null;
+            minimumDependency = null;
             Recalculate();
+            previousSubscription?.Dispose();
+            previousDependency?.Dispose();
             return this;
         }
 
-        public Stat WithBounds(ValueInput<float> minimum, ValueInput<float> maximum)
+        public Stat WithMaximum(float maximum)
+        {
+            threadGuard.Verify();
+            ThrowIfDisposed();
+            Modifier.ValidateFinite(maximum, nameof(maximum));
+            float rounded = rounding == RoundingMode.None ? maximum : (float)Math.Floor(maximum);
+            float? nextMinimum = ReadCurrentMinimum();
+            if (nextMinimum.HasValue && nextMinimum.Value > rounded)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maximum));
+            }
+
+            IDisposable previousSubscription = maximumSubscription;
+            IDisposable previousDependency = maximumDependency;
+            maximumInput = null;
+            minimumBound = nextMinimum;
+            maximumBound = rounded;
+            maximumSubscription = null;
+            maximumDependency = null;
+            Recalculate();
+            previousSubscription?.Dispose();
+            previousDependency?.Dispose();
+            return this;
+        }
+
+        public Stat WithMinimum(ValueInput<float> minimum)
         {
             threadGuard.Verify();
             ThrowIfDisposed();
             if (minimum == null) throw new ArgumentNullException(nameof(minimum));
-            if (maximum == null) throw new ArgumentNullException(nameof(maximum));
-            FloatRange initialBounds = CreateBounds(minimum.Read(), maximum.Read());
-            boundsDependency = StatsPropagationCoordinator.AddDependencies(GetDependencyNodes(minimum, maximum), this);
+            float nextMinimum = RoundMinimum(minimum.Read());
+            float? nextMaximum = ReadCurrentMaximum();
+            if (nextMaximum.HasValue && nextMinimum > nextMaximum.Value)
+            {
+                throw new ArgumentOutOfRangeException(nameof(minimum));
+            }
+
+            IDisposable nextDependency = StatsPropagationCoordinator.AddDependencies(
+                minimum.DependencyNode == null ? Array.Empty<object>() : new[] { minimum.DependencyNode },
+                this);
+            IDisposable nextSubscription = null;
             try
             {
+                nextSubscription = minimum.Subscribe(UpdateDynamicEndpoints);
+                IDisposable previousSubscription = minimumSubscription;
+                IDisposable previousDependency = minimumDependency;
                 minimumInput = minimum;
-                maximumInput = maximum;
-                bounds = initialBounds;
-                minimumSubscription = minimum.Subscribe(UpdateDynamicBounds);
-                maximumSubscription = maximum.Subscribe(UpdateDynamicBounds);
+                minimumBound = nextMinimum;
+                maximumBound = nextMaximum;
+                minimumSubscription = nextSubscription;
+                minimumDependency = nextDependency;
                 Recalculate();
+                previousSubscription?.Dispose();
+                previousDependency?.Dispose();
                 return this;
             }
             catch
             {
-                boundsDependency.Dispose();
-                boundsDependency = null;
+                nextSubscription?.Dispose();
+                nextDependency.Dispose();
                 throw;
             }
         }
 
-        private void UpdateDynamicBounds()
+        public Stat WithMaximum(ValueInput<float> maximum)
         {
-            bounds = CreateBounds(minimumInput.Read(), maximumInput.Read());
+            threadGuard.Verify();
+            ThrowIfDisposed();
+            if (maximum == null) throw new ArgumentNullException(nameof(maximum));
+            float nextMaximum = RoundMaximum(maximum.Read());
+            float? nextMinimum = ReadCurrentMinimum();
+            if (nextMinimum.HasValue && nextMinimum.Value > nextMaximum)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maximum));
+            }
+
+            IDisposable nextDependency = StatsPropagationCoordinator.AddDependencies(
+                maximum.DependencyNode == null ? Array.Empty<object>() : new[] { maximum.DependencyNode },
+                this);
+            IDisposable nextSubscription = null;
+            try
+            {
+                nextSubscription = maximum.Subscribe(UpdateDynamicEndpoints);
+                IDisposable previousSubscription = maximumSubscription;
+                IDisposable previousDependency = maximumDependency;
+                maximumInput = maximum;
+                minimumBound = nextMinimum;
+                maximumBound = nextMaximum;
+                maximumSubscription = nextSubscription;
+                maximumDependency = nextDependency;
+                Recalculate();
+                previousSubscription?.Dispose();
+                previousDependency?.Dispose();
+                return this;
+            }
+            catch
+            {
+                nextSubscription?.Dispose();
+                nextDependency.Dispose();
+                throw;
+            }
+        }
+
+        private void UpdateDynamicEndpoints()
+        {
+            float? nextMinimum = ReadCurrentMinimum();
+            float? nextMaximum = ReadCurrentMaximum();
+            if (nextMinimum.HasValue && nextMaximum.HasValue && nextMinimum.Value > nextMaximum.Value)
+            {
+                throw new InvalidOperationException("The dynamic minimum cannot exceed the maximum.");
+            }
+
+            minimumBound = nextMinimum;
+            maximumBound = nextMaximum;
             Recalculate();
         }
 
-        private FloatRange CreateBounds(float minimum, float maximum)
+        private float? ReadCurrentMinimum()
         {
-            Modifier.ValidateFinite(minimum, nameof(minimum));
-            Modifier.ValidateFinite(maximum, nameof(maximum));
-            if (minimum > maximum) throw new ArgumentOutOfRangeException(nameof(minimum));
-            var result = new FloatRange(
-                rounding == RoundingMode.None ? minimum : (float)Math.Ceiling(minimum),
-                rounding == RoundingMode.None ? maximum : (float)Math.Floor(maximum));
-            if (result.Min > result.Max) throw new ArgumentOutOfRangeException(nameof(minimum));
-            return result;
+            return minimumInput == null ? minimumBound : RoundMinimum(minimumInput.Read());
         }
 
-        private static IEnumerable<object> GetDependencyNodes(ValueInput<float> minimum, ValueInput<float> maximum)
+        private float? ReadCurrentMaximum()
         {
-            if (minimum.DependencyNode != null) yield return minimum.DependencyNode;
-            if (maximum.DependencyNode != null) yield return maximum.DependencyNode;
+            return maximumInput == null ? maximumBound : RoundMaximum(maximumInput.Read());
+        }
+
+        private float RoundMinimum(float minimum)
+        {
+            Modifier.ValidateFinite(minimum, nameof(minimum));
+            return rounding == RoundingMode.None ? minimum : (float)Math.Ceiling(minimum);
+        }
+
+        private float RoundMaximum(float maximum)
+        {
+            Modifier.ValidateFinite(maximum, nameof(maximum));
+            return rounding == RoundingMode.None ? maximum : (float)Math.Floor(maximum);
         }
 
         internal ModifierHandle AddModifier(Modifier modifier, ModifierSource source, long order)
@@ -219,11 +312,13 @@ namespace Klrpxy.Gameplay.Stats
             modifiers.Clear();
             minimumSubscription?.Dispose();
             maximumSubscription?.Dispose();
-            boundsDependency?.Dispose();
+            minimumDependency?.Dispose();
+            maximumDependency?.Dispose();
             StatsPropagationCoordinator.RemoveNode(this);
             minimumSubscription = null;
             maximumSubscription = null;
-            boundsDependency = null;
+            minimumDependency = null;
+            maximumDependency = null;
             OnBaseValueChanged = null;
             FinalValueChanged = null;
             OnFinalValueChanged = null;
@@ -253,9 +348,14 @@ namespace Klrpxy.Gameplay.Stats
                 calculated = Clamp(calculated, clamp.Value);
             }
 
-            if (bounds.HasValue)
+            if (minimumBound.HasValue)
             {
-                calculated = Clamp(calculated, bounds.Value);
+                calculated = Math.Max(calculated, minimumBound.Value);
+            }
+
+            if (maximumBound.HasValue)
+            {
+                calculated = Math.Min(calculated, maximumBound.Value);
             }
 
             Modifier.ValidateFinite(calculated, "calculation");

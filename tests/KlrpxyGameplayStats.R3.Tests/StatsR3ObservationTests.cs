@@ -47,8 +47,8 @@ namespace Klrpxy.Gameplay.Stats.R3.Tests
 
             using (subject.StatSet.Attack.ObserveFinalRange().Subscribe(values.Add))
             {
-                subject.StatSet.Attack.WithBounds(0f, 6f);
-                subject.StatSet.Attack.WithBounds(0f, 6f);
+                subject.StatSet.Attack.WithMinimum(0f).WithMaximum(6f);
+                subject.StatSet.Attack.WithMinimum(0f).WithMaximum(6f);
             }
 
             Assert.Equal(

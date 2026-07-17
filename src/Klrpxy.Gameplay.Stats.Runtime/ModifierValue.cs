@@ -8,7 +8,6 @@ namespace Klrpxy.Gameplay.Stats
         private readonly IValueInput[] inputs;
         private readonly Func<object[], float> calculate;
         private readonly bool recoverCalculationFailures;
-        private bool usePreparedValue;
         private float lastValidValue;
 
         private ModifierValue(IValueInput[] inputs, Func<object[], float> calculate)
@@ -22,7 +21,6 @@ namespace Klrpxy.Gameplay.Stats
             this.inputs = inputs;
             this.calculate = calculate;
             recoverCalculationFailures = true;
-            usePreparedValue = true;
             lastValidValue = initialValue;
         }
 
@@ -82,12 +80,6 @@ namespace Klrpxy.Gameplay.Stats
                 float result = calculate(values);
                 Modifier.ValidateFinite(result, nameof(result));
                 return result;
-            }
-
-            if (usePreparedValue)
-            {
-                usePreparedValue = false;
-                return lastValidValue;
             }
 
             try

@@ -109,7 +109,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
 
             subject.Dispose();
 
-            Assert.Throws<ObjectDisposedException>(() => subject.StatSet.Damage.WithBounds(0f, 10f));
+            Assert.Throws<ObjectDisposedException>(() => subject.StatSet.Damage.WithMinimum(0f));
             Assert.Throws<ObjectDisposedException>(() => subject.StatSet.Mana.Set(20f));
         }
 
@@ -285,7 +285,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var minimum = new ObservableValue(0f);
             var maximum = new ObservableValue(200f);
             source.Modify(subject.StatSet.Health).Add(modifierInput, value => value);
-            subject.StatSet.Health.WithBounds(ValueInput.External(minimum), ValueInput.External(maximum));
+            subject.StatSet.Health
+                .WithMinimum(ValueInput.External(minimum))
+                .WithMaximum(ValueInput.External(maximum));
 
             subject.Dispose();
             modifierInput.BaseValue = 20f;

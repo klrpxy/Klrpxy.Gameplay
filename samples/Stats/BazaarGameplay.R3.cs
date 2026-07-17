@@ -20,14 +20,13 @@ namespace Consumer
                 observed = value;
                 observationCount++;
             });
-            source.Modify(hero.StatSet.Power).Add(dynamicValue);
+            source.Modify(hero.StatSet.Power).Where(condition).Add(dynamicValue);
             dynamicValue.Value = 8f;
-            source.Modify(hero.StatSet.Power).Where(condition).Add(10f);
             condition.Value = true;
 
-            bool passed = hero.StatSet.Power.FinalValue == 28f
-                && observed == 28f
-                && observationCount == 4;
+            bool passed = hero.StatSet.Power.FinalValue == 18f
+                && observed == 18f
+                && observationCount == 2;
             source.Dispose();
             hero.Dispose();
             return passed;

@@ -29,7 +29,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         {
             // 验证声明边界只钳制初始 Value，不应用修改时的取整规则。
             var resource = new Resource(100.9f, RoundingMode.Floor)
-                .WithBounds(0f, 200f);
+                .WithMinimum(0f)
+                .WithMaximum(200f);
 
             Assert.Equal(100.9f, resource.Value);
         }
@@ -86,11 +87,12 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         }
 
         [Fact]
-        public void WithBoundsClampLimitsCurrentAndFutureValues()
+        public void MinimumAndMaximumClampCurrentAndFutureValues()
         {
             // 验证 Clamp 边界立即限制当前 Value，并限制后续修改。
             var resource = new Resource(120f)
-                .WithBounds(0f, 100f);
+                .WithMinimum(0f)
+                .WithMaximum(100f);
 
             Assert.Equal(100f, resource.Value);
 
@@ -107,7 +109,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var changes = new System.Collections.Generic.List<(float Previous, float Current)>();
             resource.OnValueChanged += (previous, current) => changes.Add((previous, current));
 
-            resource.WithBounds(0f, 100f);
+            resource.WithMinimum(0f).WithMaximum(100f);
 
             Assert.Equal(new[] { (120f, 100f) }, changes);
         }
@@ -126,13 +128,43 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         }
 
         [Fact]
-        public void DeclaringBoundsMoreThanOnceIsRejected()
+        public void WithMaximumLimitsValueWithoutALowerBound()
         {
-            // 验证 Resource 的永久边界只能声明一次。
-            var resource = new Resource(80f)
-                .WithBounds(0f, 100f);
+            var resource = new Resource(120f)
+                .WithMaximum(100f);
 
-            Assert.Throws<InvalidOperationException>(() => resource.WithMinimum(0f));
+            Assert.Equal(100f, resource.Value);
+            resource.Decrease(150f);
+            Assert.Equal(-50f, resource.Value);
+        }
+
+        [Fact]
+        public void MinimumAndMaximumCanBeDeclaredInEitherOrder()
+        {
+            var minimumFirst = new Resource(120f)
+                .WithMinimum(0f)
+                .WithMaximum(100f);
+            var maximumFirst = new Resource(-20f)
+                .WithMaximum(100f)
+                .WithMinimum(0f);
+
+            Assert.Equal(100f, minimumFirst.Value);
+            Assert.Equal(0f, maximumFirst.Value);
+        }
+
+        [Fact]
+        public void EndpointsCanBeReplacedAndInvalidReplacementKeepsPreviousBounds()
+        {
+            var resource = new Resource(80f)
+                .WithMinimum(0f)
+                .WithMaximum(100f);
+
+            resource.WithMaximum(60f);
+            Assert.Equal(60f, resource.Value);
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => resource.WithMinimum(70f));
+            resource.Set(-10f);
+            Assert.Equal(0f, resource.Value);
         }
 
         [Fact]
@@ -140,7 +172,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
         {
             // 验证 Set 先取整候选值，再应用 Resource 固有边界。
             var resource = new Resource(5f, RoundingMode.Floor)
-                .WithBounds(1.5f, 10f);
+                .WithMinimum(1.5f)
+                .WithMaximum(10f);
 
             resource.Set(1.9f);
 
@@ -201,7 +234,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             // 验证 Resource 的动态最大边界会随来源 Stat 的 FinalValue 变化而立即钳制 Value。
             var maximum = new Stat(100f);
             var resource = new Resource(80f)
-                .WithBounds(0f, ValueInput.Final(maximum), ResourceBoundPolicy.Clamp);
+                .WithMinimum(0f)
+                .WithMaximum(ValueInput.Final(maximum));
 
             maximum.BaseValue = 50f;
 
@@ -217,7 +251,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var changes = new System.Collections.Generic.List<(float Previous, float Current)>();
             resource.OnValueChanged += (previous, current) => changes.Add((previous, current));
 
-            resource.WithBounds(0f, ValueInput.External(maximum));
+            resource.WithMinimum(0f).WithMaximum(ValueInput.External(maximum));
 
             Assert.Equal(new[] { (120f, 100f) }, changes);
         }
@@ -228,7 +262,9 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             // 验证 PreserveRatio 策略会在动态最大值变化时保持 Resource 填充比例。
             var maximum = new Stat(100f);
             var resource = new Resource(80f)
-                .WithBounds(0f, ValueInput.Final(maximum), ResourceBoundPolicy.PreserveRatio);
+                .WithMinimum(0f)
+                .WithMaximum(ValueInput.Final(maximum))
+                .PreserveRatioWhenBoundsChange();
 
             maximum.BaseValue = 50f;
 
@@ -241,7 +277,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             // 验证动态边界可以读取另一个 Resource 的当前 Value。
             var capacity = new Resource(100f);
             var resource = new Resource(80f)
-                .WithBounds(0f, ValueInput.Current(capacity), ResourceBoundPolicy.Clamp);
+                .WithMinimum(0f)
+                .WithMaximum(ValueInput.Current(capacity));
 
             capacity.Set(50f);
 
@@ -254,7 +291,8 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             // 验证动态边界可以读取 Stat 的 BaseValue。
             var maximum = new Stat(100f);
             var resource = new Resource(80f)
-                .WithBounds(0f, ValueInput.Base(maximum), ResourceBoundPolicy.Clamp);
+                .WithMinimum(0f)
+                .WithMaximum(ValueInput.Base(maximum));
 
             maximum.BaseValue = 50f;
 
@@ -269,7 +307,7 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var observedResourceValue = -1f;
             var resource = new Resource(80f);
             maximum.OnFinalValueChanged += (previous, current) => observedResourceValue = resource.Value;
-            resource.WithBounds(0f, ValueInput.Final(maximum), ResourceBoundPolicy.Clamp);
+            resource.WithMinimum(0f).WithMaximum(ValueInput.Final(maximum));
 
             maximum.BaseValue = 50f;
 
@@ -282,10 +320,10 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             // 验证会形成 Resource Current 环的动态边界在改变目标前被原子拒绝。
             var first = new Resource(80f);
             var second = new Resource(100f);
-            first.WithBounds(0f, ValueInput.Current(second));
+            first.WithMinimum(0f).WithMaximum(ValueInput.Current(second));
 
             Assert.Throws<InvalidOperationException>(() =>
-                second.WithBounds(0f, ValueInput.Current(first)));
+                second.WithMinimum(0f).WithMaximum(ValueInput.Current(first)));
 
             second.Set(120f);
             Assert.Equal(120f, second.Value);
@@ -368,11 +406,43 @@ namespace KlrpxyGameplayStats.Runtime.Tests
             var minimum = new ObservableValue(0f);
             var maximum = new ObservableValue(100f);
             var resource = new Resource(50f)
-                .WithBounds(ValueInput.External(minimum), ValueInput.External(maximum));
+                .WithMinimum(ValueInput.External(minimum))
+                .WithMaximum(ValueInput.External(maximum));
 
             minimum.Value = 60f;
 
             Assert.Equal(60f, resource.Value);
+        }
+
+        [Fact]
+        public void InvalidDynamicEndpointsKeepTheLastValidBoundsAndRecoverTogether()
+        {
+            var minimum = new ObservableValue(0f);
+            var maximum = new ObservableValue(100f);
+            var resource = new Resource(50f)
+                .WithMinimum(ValueInput.External(minimum))
+                .WithMaximum(ValueInput.External(maximum));
+
+            Assert.Throws<InvalidOperationException>(() => minimum.Value = 120f);
+            Assert.Equal(50f, resource.Value);
+
+            maximum.Value = 150f;
+            Assert.Equal(120f, resource.Value);
+        }
+
+        [Fact]
+        public void ReplacingTheOtherEndpointRecoversAValidDynamicBound()
+        {
+            var minimum = new ObservableValue(0f);
+            var resource = new Resource(-10f)
+                .WithMinimum(ValueInput.External(minimum))
+                .WithMaximum(100f);
+
+            Assert.Throws<InvalidOperationException>(() => minimum.Value = 120f);
+
+            resource.WithMaximum(150f);
+
+            Assert.Equal(120f, resource.Value);
         }
     }
 }
