@@ -67,6 +67,21 @@ namespace Klrpxy.Gameplay.Stats.R3.Tests
         }
 
         [Fact]
+        public void InactiveR3ModifierUsesLatestValueWhenFirstActivated()
+        {
+            var subject = new TestSubject();
+            var source = new ModifierSource();
+            var enabled = new ReactiveProperty<bool>(false);
+            var value = new ReactiveProperty<float>(5f);
+            source.Modify(subject.StatSet.Power).Where(enabled).Add(value);
+
+            value.Value = 10f;
+            enabled.Value = true;
+
+            Assert.Equal(20f, subject.StatSet.Power.FinalValue);
+        }
+
+        [Fact]
         public void GroupRuleSharesOneR3ConditionAndDynamicValueAcrossMembers()
         {
             var first = new TestSubject();

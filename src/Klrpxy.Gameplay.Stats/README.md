@@ -6,12 +6,12 @@ Klrpxy Gameplay Stats expresses character attributes, item auras, combat growth,
 
 ## Installation
 
-Stats v0.3.2 is verified with Unity 2022.3.62f3 and Unity 6000.5.0f1.
+Stats v0.4.0 is verified with Unity 2022.3.62f3 and Unity 6000.5.0f1.
 
-Tags v0.2.1 adds the runtime integration contract required by Stats. Stats v0.3.2 validates that contract instead of accepting the incompatible Tags v0.2.0 package. Stats R3 v0.3.0 remains compatible with Core v0.3.2.
+Tags v0.2.1 provides the runtime integration contract required by Stats. Use matching v0.4.0 versions of Stats Core and the optional R3 Adapter.
 
 1. Download and import [Klrpxy Gameplay Tags v0.2.1](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.2.1/Klrpxy.Gameplay.Tags.0.2.1.unitypackage).
-2. Download and import [Klrpxy Gameplay Stats v0.3.2](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.3.2/Klrpxy.Gameplay.Stats.0.3.2.unitypackage).
+2. Download and import [Klrpxy Gameplay Stats v0.4.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.4.0/Klrpxy.Gameplay.Stats.0.4.0.unitypackage).
 
 The Stats package does not copy the Tags DLL. Install Tags before Stats.
 
@@ -20,9 +20,21 @@ The Stats package does not copy the Tags DLL. Install Tags before Stats.
 Core Stats does not require R3. Follow these steps only when gameplay needs reactive values, conditions, or observation APIs:
 
 1. Install R3 1.3.1 by following the [official R3 Unity instructions](https://github.com/Cysharp/R3#unity).
-2. Import [Klrpxy Gameplay Stats R3 v0.3.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.3.0/Klrpxy.Gameplay.Stats.R3.0.3.0.unitypackage).
+2. Import [Klrpxy Gameplay Stats R3 v0.4.0](https://github.com/klrpxy/Klrpxy.Gameplay/releases/download/v0.4.0/Klrpxy.Gameplay.Stats.R3.0.4.0.unitypackage).
 
 The adapter does not bundle R3 DLLs and does not make Core Stats depend on R3.
+
+### Migrating from v0.3.x
+
+v0.4.0 removes `WithBounds`. Declare fixed or dynamic endpoints independently with `WithMinimum` and `WithMaximum`; they can be used alone, in either order, and can replace the same endpoint:
+
+```csharp
+var health = new Resource(100f)
+    .WithMinimum(0f)
+    .WithMaximum(ValueInput.Final(maxHealth));
+```
+
+Replace `ResourceBoundPolicy.PreserveRatio` with the explicit `.PreserveRatioWhenBoundsChange()` call.
 
 ## Quick start
 
